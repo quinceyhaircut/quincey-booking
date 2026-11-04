@@ -174,7 +174,7 @@ const WASHIN_RE = /^(TR_.*|WCB|WCB_NR|KID_WCB)$/;
 function conflict(codes, addons) {
   const cuts = codes.filter(c => CUT_RE.test(c)).map(c => label(svc(c)));
   if (addons.includes('CUT_ADD')) cuts.push('加購剪髮');
-  if (addons.includes('BANG_ADD')) cuts.push('加購修瀏海');
+  if (addons.includes('BANG_ADD') && !codes.some(c => c.startsWith('PERM'))) cuts.push('加購修瀏海');
   if (cuts.length > 1) return '「' + cuts[0] + '」和「' + cuts[1] + '」重複了，剪髮、修瀏海只能選一項。';
   const wi = codes.find(c => WASHIN_RE.test(c)), w = codes.find(c => c.startsWith('WASH_'));
   if (wi && w) return '「' + label(svc(wi)) + '」已含洗髮，不需要再選「' + label(svc(w)) + '」。';
@@ -282,7 +282,8 @@ function renderTime() {
     h += '</div>';
     if (needHair()) h += '<h2>髮長（必選' + (pk ? '' : '，依髮長收費') + '）</h2><div class="seg">' + ['短', '中', '長'].map(x => '<button class="btn' + (hairNow() === x ? ' on' : '') + '" data-hair="' + x + '">' + HAIR_TXT[x] + '</button>').join('') + '</div>';
     const allowed = new Set(); state.codes.forEach(c => (svc(c).addons || []).forEach(a => allowed.add(a)));
-    if (state.codes.some(c => CUT_RE.test(c))) { allowed.delete('CUT_ADD'); allowed.delete('BANG_ADD'); }
+    if (state.codes.some(c => CUT_RE.test(c))) allowed.delete('CUT_ADD');
+    if (state.codes.some(c => CUT_RE.test(c) && !c.startsWith('PERM'))) allowed.delete('BANG_ADD');
     const al = C.addons.filter(a => allowed.has(a.code));
     if (al.length) {
       h += '<h2>加購（選填）</h2>';
