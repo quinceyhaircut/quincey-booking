@@ -161,7 +161,7 @@ function total() {
 }
 
 /* 畫面：選服務 */
-const SHORT = { CUT: '單剪', CUT_RINSE: '沖洗一次＋自助式吹乾', KID_CUT: '單剪', KID_RINSE: '沖洗一次＋自助式吹乾', KID_WCB: '剪洗吹整' };
+const SHORT = { BANG: '修瀏海', CUT: '單剪髮', CUT_RINSE: '剪髮＋沖洗一次＆自助式吹乾', KID_CUT: '單剪髮', KID_RINSE: '剪髮＋沖洗一次＆自助式吹乾', KID_WCB: '剪洗吹整' };
 const label = s => SHORT[s.code] || s.name;
 function cats() {
   const out = [];
@@ -169,14 +169,19 @@ function cats() {
   return out;
 }
 /* 重複防呆：回傳提醒文字，沒重複就回傳空字串 */
-const CUT_RE = /^(CUT|CUT_RINSE|WCB|WCB_NR|KID_CUT|KID_RINSE|KID_WCB|HOME|PERM.*)$/;
+const CUT_RE = /^(CUT|CUT_RINSE|BANG|WCB|WCB_NR|KID_CUT|KID_RINSE|KID_WCB|HOME|PERM.*)$/;
 const WASHIN_RE = /^(TR_.*|WCB|WCB_NR|KID_WCB)$/;
 function conflict(codes, addons) {
   const cuts = codes.filter(c => CUT_RE.test(c)).map(c => label(svc(c)));
   if (addons.includes('CUT_ADD')) cuts.push('加購剪髮');
-  if (cuts.length > 1) return '「' + cuts[0] + '」和「' + cuts[1] + '」都含剪髮，剪髮只能選一項。';
+  if (addons.includes('BANG_ADD')) cuts.push('加購修瀏海');
+  if (cuts.length > 1) return '「' + cuts[0] + '」和「' + cuts[1] + '」重複了，剪髮、修瀏海只能選一項。';
   const wi = codes.find(c => WASHIN_RE.test(c)), w = codes.find(c => c.startsWith('WASH_'));
   if (wi && w) return '「' + label(svc(wi)) + '」已含洗髮，不需要再選「' + label(svc(w)) + '」。';
+  const ri = codes.find(c => /^(CUT_RINSE|KID_RINSE)$/.test(c));
+  if (ri && w) return '「' + label(svc(ri)) + '」已含沖洗，要洗頭請改選「剪洗吹整」。';
+  const tr = codes.find(c => c.startsWith('TR_'));
+  if (tr && addons.includes('QTR')) return '已選「' + label(svc(tr)) + '」，不需要再加購瞬間護髮。';
   return '';
 }
 function dupPopup(msg) {
@@ -198,7 +203,7 @@ function renderPick() {
   if (state.codes.length) {
     const pk = curPkg();
     h += '<div class="banner">已選：<b>' + esc(pk ? pk.name : selNames()) + '</b>' + (pk ? '<br><small class="muted">' + esc(selNames()) + '</small>' : '') +
-      '<div class="seg" style="margin-top:8px"><button class="btn primary" id="go">繼續：選加購與時間 →</button><button class="btn" id="clr" style="flex:0 0 auto;border-color:var(--line);color:var(--muted)">✕ 清除重選</button></div>' +
+      '<div class="seg" style="margin-top:8px"><button class="btn primary" id="go">繼續：選加購與時間 →</button><button class="btn" id="clr" style="flex:0 0 auto;border-color:var(--line);color:var(--muted)">✕ 全部清除重選</button></div>' +
       '<small class="muted">要再加別的服務，直接點下面的類別選</small></div>';
   }
   h += '<h2>熱門組合</h2><p class="muted" style="margin:-6px 0 8px">點一下直接選加購與時間</p>';
@@ -270,14 +275,14 @@ function renderTime() {
   } else {
     normalize();
     const pk = pkgOver(state.codes, state.addons, state.date), cp = curPkg();
-    h = '<div class="seg"><button class="btn" id="back">← 改服務／再加服務</button><button class="btn" id="clr" style="flex:0 0 auto;border-color:var(--line);color:var(--muted)">✕ 清除重選</button></div>';
+    h = '<div class="seg"><button class="btn" id="back">← 改服務／再加服務</button><button class="btn" id="clr" style="flex:0 0 auto;border-color:var(--line);color:var(--muted)">✕ 全部清除重選</button></div>';
     h += '<h2>已選服務' + (cp ? '｜' + esc(cp.name) : '') + '</h2><div class="card">';
     h += state.codes.map(c => '<div class="pkg" style="cursor:default;padding:4px 0"><span>' + esc(svc(c).name) + '<small>約 ' + svc(c).min + ' 分鐘</small></span>' + (pk ? '' : '<span class="price">' + fmt(priceOf(c, state.date)) + '</span>') + '</div>').join('');
     if (pk) h += '<div class="pkg" style="cursor:default;padding:4px 0;border-top:1px solid var(--line)"><span><b>組合價</b></span><span class="price">$' + pk.price.toLocaleString() + (pk.from ? ' 起' : '') + '</span></div>';
     h += '</div>';
     if (needHair()) h += '<h2>髮長（必選' + (pk ? '' : '，依髮長收費') + '）</h2><div class="seg">' + ['短', '中', '長'].map(x => '<button class="btn' + (hairNow() === x ? ' on' : '') + '" data-hair="' + x + '">' + HAIR_TXT[x] + '</button>').join('') + '</div>';
     const allowed = new Set(); state.codes.forEach(c => (svc(c).addons || []).forEach(a => allowed.add(a)));
-    if (state.codes.some(c => CUT_RE.test(c))) allowed.delete('CUT_ADD');
+    if (state.codes.some(c => CUT_RE.test(c))) { allowed.delete('CUT_ADD'); allowed.delete('BANG_ADD'); }
     const al = C.addons.filter(a => allowed.has(a.code));
     if (al.length) {
       h += '<h2>加購（選填）</h2>';
@@ -286,6 +291,22 @@ function renderTime() {
         h += '<label class="card svc' + (on ? ' sel' : '') + '"><input type="checkbox" data-add="' + a.code + '"' + (on ? ' checked' : '') + '><span class="t">' + esc(a.name) + '<small>' + (a.min ? '+約 ' + a.min + ' 分鐘' : '') + '</small></span><span class="price">+$' + addPrice(a.code, state.date).toLocaleString() + '</span></label>';
       });
     }
+    // 可搭配的整項服務（每個類別擇一，照原價）
+    const pairs = [];
+    state.codes.forEach(c => (svc(c).pairs || []).forEach(x => { if (svc(x) && !pairs.includes(x)) pairs.push(x); }));
+    const groups = [];
+    pairs.forEach(x => { const s = svc(x); let g = groups.find(g => g.cat === s.cat); if (!g) groups.push(g = { cat: s.cat, list: [], notes: [] }); g.list.push(s); });
+    groups.forEach(g => state.codes.forEach(c => { const m = svc(c); if (m.pairNote && (m.pairs || []).some(x => g.list.some(s => s.code === x)) && !g.notes.includes(m.pairNote)) g.notes.push(m.pairNote); }));
+    groups.forEach(g => {
+      h += '<h2>加購' + esc(g.cat) + '（選填，擇一）</h2>';
+      g.notes.forEach(n => h += '<p class="note">ⓘ ' + esc(n) + '</p>');
+      h += '<div class="card grp"><div class="opts" style="border-top:0">';
+      g.list.forEach(s => {
+        const on = state.codes.includes(s.code);
+        h += '<div class="opt' + (on ? ' sel' : '') + '" data-pair="' + s.code + '"><span class="dot"></span><span class="t">' + esc(label(s)) + (s.confirm ? '<span class="tag">需店家確認</span>' : '') + '<small>約 ' + s.min + ' 分鐘' + (hairNote(s.code, state.date) ? '<br>' + esc(hairNote(s.code, state.date)) : '') + '</small></span><span class="price">+' + fmt(priceOf(s.code, state.date)) + '</span></div>';
+      });
+      h += '</div></div>';
+    });
     state.notes.forEach(n => h += '<p class="note">ⓘ ' + esc(n) + '</p>');
     h += '<h2>預約人數</h2><div class="seg">' + [1, 2, 3].map(n => '<button class="btn' + (state.people === n ? ' on' : '') + '" data-ppl="' + n + '">' + n + ' 位</button>').join('') + '</div>';
     if (state.people > 1) h += '<p class="note">ⓘ ' + state.people + ' 位做同一組服務、同一個時段，時間自動延長、金額 ×' + state.people + '。不同服務請約完第一位後，另外建立一個預約</p>';
@@ -311,6 +332,15 @@ function renderTime() {
     const msg = conflict(state.codes, next);
     if (msg) { el.checked = false; dupPopup(msg); return; }
     state.addons = next; redo();
+  });
+  document.querySelectorAll('[data-pair]').forEach(el => el.onclick = () => {
+    const c = el.dataset.pair;
+    if (state.codes.includes(c)) { state.codes = state.codes.filter(x => x !== c); normalize(); redo(); return; }
+    const sameCat = C.services.filter(x => x.cat === svc(c).cat).map(x => x.code);
+    const next = state.codes.filter(x => !sameCat.includes(x)).concat(c);
+    const msg = conflict(next, state.addons);
+    if (msg) { dupPopup(msg); return; }
+    state.codes = next; normalize(); redo();
   });
   document.querySelectorAll('[data-ppl]').forEach(el => el.onclick = () => { const n = +el.dataset.ppl; const up = n > state.people; state.people = n; redo(); if (n > 1 && up) pplPopup(n); });
   document.querySelectorAll('[data-d]').forEach(el => el.onclick = () => { keepNote(); state.date = el.dataset.d; state.time = ''; renderTime(); });
