@@ -150,7 +150,7 @@ function renderPick() {
   });
   h += '<h2>或自己選服務</h2>';
   let cat = '';
-  C.services.forEach(s => {
+  C.services.filter(s => !s.hidden).forEach(s => {
     if (s.cat !== cat) { cat = s.cat; h += '<div class="cat">' + esc(cat) + '</div>'; }
     const on = state.codes.includes(s.code);
     h += '<label class="card svc' + (on ? ' sel' : '') + '"><input type="checkbox" data-svc="' + s.code + '"' + (on ? ' checked' : '') + '><span class="t">' + esc(s.name) +
@@ -287,6 +287,17 @@ function renderDone(b) {
     (b.proxy ? '' : '<p><button class="btn" id="cal">加入手機行事曆</button></p>') + '<p><button class="btn primary" id="close">完成</button></p></div>';
   if ($('#cal')) $('#cal').onclick = () => liff.openWindow({ url: gcal, external: true });
   $('#close').onclick = () => liff.isInClient() ? liff.closeWindow() : location.reload();
+  if (!b.proxy) remind(b);
+}
+function remind(b) {
+  const hrs = C.settings.cancelHours;
+  const within = (new Date(b.date + 'T' + b.time + ':00+08:00').getTime() - Date.now()) / 36e5 < hrs;
+  const m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = '<div class="box"><b>📌 提醒</b><p>服務前 ' + hrs + ' 小時內無法線上取消或改期，如需更改請直接傳 LINE 訊息給店家。</p>' +
+    (within ? '<p class="note">這筆預約距離服務已不到 ' + hrs + ' 小時，之後無法線上取消或改期。</p>' : '') +
+    '<button class="btn primary" id="m-ok">知道了</button></div>';
+  document.body.appendChild(m);
+  $('#m-ok').onclick = () => m.remove();
 }
 
 function renderCancelled(b) {
