@@ -64,7 +64,7 @@ input[type=text],input[type=tel],input[type=date],select,textarea{width:100%;pad
 <script>
 const LIFF_ID = '2012366833-i1UEQInD';
 const API = 'https://script.google.com/macros/s/AKfycbx3MClXu-KSg9ygjtWzXZTYG23vYzqhtm-cEZQHYl2usahTFYYLM9HDfZ24pyqLkWYIjQ/exec';
-let C = null, idToken = '', state = { codes: [], addons: [], date: '', time: '', quote: null, step: 'pick', notes: [], resched: null, proxy: false };
+let C = null, idToken = '', state = { codes: [], addons: [], date: '', time: '', quote: null, step: 'pick', notes: [], resched: null, proxy: false, people: 1 };
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -127,7 +127,8 @@ function total() {
   let t = 0, m = 0, from = false;
   state.codes.forEach(c => { const p = priceOf(c, state.date); t += p.price; from = from || p.from; m += svc(c).min; });
   state.addons.forEach(a => { t += add(a).price; m += add(a).min; });
-  return { t, m: Math.ceil(m / 10) * 10, from };
+  const n = state.people || 1;
+  return { t: t * n, m: Math.ceil(m * n / 10) * 10, from };
 }
 
 /* 畫面：選服務 */
@@ -137,6 +138,8 @@ function renderPick() {
   if (C.customer.returning && !C.isOwner) h += '<p class="muted">' + esc(C.customer.name) + '，歡迎回來！</p>';
   if (C.isOwner) h += '<p class="banner">👑 店長模式：下方「預約清單」可幫客人取消／改期；填資料時可切換「代客預約（電話）」</p>';
   h += '<div class="card mine hide" id="mine"></div>';
+  h += '<h2>預約人數</h2><div class="seg">' + [1, 2, 3].map(n => '<button class="btn' + (state.people === n ? ' on' : '') + '" data-ppl="' + n + '">' + n + ' 位</button>').join('') + '</div>';
+  if (state.people > 1) h += '<p class="note">ⓘ ' + state.people + ' 位做同一組服務，系統會連續排時段、金額 ×' + state.people + '。若每位項目不同，請在備註寫明</p>';
   h += '<h2>熱門套餐</h2>';
   C.packages.forEach((p, i) => {
     const sel = JSON.stringify([...p.codes].sort()) === JSON.stringify([...state.codes].sort()) && JSON.stringify([...p.addons].sort()) === JSON.stringify([...state.addons].sort());
@@ -163,6 +166,7 @@ function renderPick() {
   state.notes.forEach(n => h += '<p class="note">ⓘ ' + esc(n) + '</p>');
   if (C.promo.end && nowStr() <= C.promo.end) h += '<p class="note">🎁 ' + esc(C.promo.end.slice(5, 10).replace('-', '/')) + ' 前預約 12 月服務，享原價</p>';
   $('#app').innerHTML = h;
+  document.querySelectorAll('[data-ppl]').forEach(el => el.onclick = () => { state.people = +el.dataset.ppl; renderPick(); });
   document.querySelectorAll('[data-pkg]').forEach(el => el.onclick = () => { const p = C.packages[+el.dataset.pkg]; state.codes = [...p.codes]; state.addons = [...p.addons]; normalize(); state.step = 'time'; renderTime(); });
   document.querySelectorAll('[data-svc]').forEach(el => el.onchange = () => { const c = el.dataset.svc; state.codes = el.checked ? state.codes.concat(c) : state.codes.filter(x => x !== c); renderPick(); });
   document.querySelectorAll('[data-add]').forEach(el => el.onchange = () => { const c = el.dataset.add; state.addons = el.checked ? state.addons.concat(c) : state.addons.filter(x => x !== c); renderPick(); });
@@ -200,7 +204,7 @@ function renderTime() {
 async function loadSlots() {
   $('#slots').innerHTML = '<p class="muted">查詢空檔中…</p>';
   try {
-    const o = await api('slots', { date: state.date, codes: state.codes, addons: state.addons, hair: hairNow(), rescheduleId: state.resched ? state.resched.id : '' });
+    const o = await api('slots', { date: state.date, codes: state.codes, addons: state.addons, hair: hairNow(), people: state.people, rescheduleId: state.resched ? state.resched.id : '' });
     state.quote = o.quote;
     let h = '<h2>選時段</h2>';
     if (o.closed) h += '<p class="muted">這天店休，請選其他日期 🙏</p>';
@@ -234,7 +238,7 @@ function renderForm() {
   if (px || !c.returning) h += '<label>是否來過昆希剪髮？</label><div class="seg"><button class="btn' + (f.isNew === false ? ' on' : '') + '" data-new="0">來過</button><button class="btn' + (f.isNew === true ? ' on' : '') + '" data-new="1">第一次</button></div>';
   if (state.codes.includes('HOME')) h += '<label>到府地址</label><input type="text" id="address" value="' + esc(f.address || '') + '">';
   h += '<label>備註（選填，例如想剪的造型、特殊染髮需求等）</label><textarea id="note" rows="3">' + esc(f.note || '') + '</textarea></div>';
-  h += '<div class="card"><b>' + state.date + ' ' + state.time + '</b><br>' + state.codes.map(x => esc(svc(x).name)).concat(state.addons.map(a => '加購' + esc(add(a).name))).join('、') + '</div>';
+  h += '<div class="card"><b>' + state.date + ' ' + state.time + '</b>' + (state.people > 1 ? '｜' + state.people + ' 位' : '') + '<br>' + state.codes.map(x => esc(svc(x).name)).concat(state.addons.map(a => '加購' + esc(add(a).name))).join('、') + '</div>';
   $('#app').innerHTML = h;
   $('#back').onclick = () => { state.form = read(); state.step = 'time'; renderTime(); };
   document.querySelectorAll('[data-new]').forEach(el => el.onclick = () => { state.form = Object.assign(read(), { isNew: el.dataset.new === '1' }); renderForm(); });
@@ -253,7 +257,7 @@ async function submit() {
   if (!state.proxy && !C.customer.returning && state.form.isNew == null) { showErr('請選擇是否來過昆希剪髮'); return; }
   $('#next').disabled = true; $('#next').textContent = '送出中…';
   try {
-    const o = await api('book', { date: state.date, time: state.time, codes: state.codes, addons: state.addons, form: state.form, proxy: state.proxy });
+    const o = await api('book', { date: state.date, time: state.time, codes: state.codes, addons: state.addons, form: state.form, proxy: state.proxy, people: state.people });
     if (!state.proxy) { try { if (liff.isInClient()) await liff.sendMessages([{ type: 'text', text: '預約完成 #' + o.booking.id }]); } catch (e) {} }
     renderDone(o.booking);
   } catch (e) { showErr(e); $('#next').disabled = false; $('#next').textContent = label; }
@@ -273,16 +277,25 @@ function renderDone(b) {
   $('#bar').classList.add('hide');
   const pending = b.status === '待確認';
   const title = b.rescheduled ? '改期成功' : b.proxy ? '已代客預約' : (pending ? '已送出，待店家確認' : '預約成功');
-  state.resched = null; state.proxy = false;
+  state.resched = null; state.proxy = false; state.people = 1;
   const gcal = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent('昆希剪髮預約') +
     '&dates=' + b.date.replace(/-/g, '') + 'T' + b.time.replace(':', '') + '00/' + b.date.replace(/-/g, '') + 'T' + b.end.replace(':', '') + '00&ctz=Asia/Taipei&details=' + encodeURIComponent(b.items.join('、') + '\n編號 ' + b.id);
   $('#app').innerHTML = '<div class="done"><div class="big">' + (pending ? '⏳' : '✅') + '</div><h2>' + title + '</h2>' +
-    '<p><b>' + b.date + ' ' + b.time + '–' + b.end + '</b></p><p>' + b.items.map(esc).join('<br>') + '</p><p class="price">預估 $' + b.total.toLocaleString() + (b.from ? ' 起' : '') + '</p>' +
+    '<p><b>' + b.date + ' ' + b.time + '–' + b.end + '</b>' + (b.people > 1 ? '｜' + b.people + ' 位' : '') + '</p><p>' + b.items.map(esc).join('<br>') + '</p><p class="price">預估 $' + b.total.toLocaleString() + (b.from ? ' 起' : '') + '</p>' +
     (b.promo ? '<p class="note">🎁 已享 11/30 前預約原價優惠</p>' : '') +
     (b.proxy ? '<p class="muted">已寫入日曆，不會傳 LINE 給客人</p>' : pending ? '<p class="muted">店家確認後會用 LINE 通知你</p>' : '<p class="muted">確認訊息已傳到聊天室</p>') +
     (b.proxy ? '' : '<p><button class="btn" id="cal">加入手機行事曆</button></p>') + '<p><button class="btn primary" id="close">完成</button></p></div>';
   if ($('#cal')) $('#cal').onclick = () => liff.openWindow({ url: gcal, external: true });
   $('#close').onclick = () => liff.isInClient() ? liff.closeWindow() : location.reload();
+}
+
+function renderCancelled(b) {
+  $('#bar').classList.add('hide');
+  $('#app').innerHTML = '<div class="done"><div class="big">❌</div><h2>已取消預約</h2>' +
+    '<p><b>' + esc(b.date + ' ' + b.time + '–' + b.end) + '</b></p><p>' + (C.isOwner && !b.self ? esc(b.name) + '｜' : '') + esc(b.items) + '</p><p class="muted">編號 ' + esc(b.id) + '</p>' +
+    (C.isOwner && !b.self ? '<p class="muted">已取消，不會通知客人，請自行聯絡</p>' : '<p class="muted">取消資訊已傳到聊天室，期待下次為你服務 🙏</p>') +
+    '<p><button class="btn primary" id="again">重新預約</button></p></div>';
+  $('#again').onclick = () => { state.step = 'pick'; renderPick(); };
 }
 
 /* 我的預約 */
@@ -292,7 +305,7 @@ async function loadMine() {
     if (!o.list.length || state.step !== 'pick') return;
     const el = $('#mine'); if (!el) return;
     el.classList.remove('hide');
-    el.innerHTML = '<b>' + (o.isOwner ? '預約清單（你的＋電話預約）' : '我的預約') + '</b>' + o.list.map(r => '<div class="row"><span>' + r.date + ' ' + r.time + (r.status === '待確認' ? '<span class="tag">待確認</span>' : '') +
+    el.innerHTML = '<b>' + (o.isOwner ? '預約清單（全部客人，共 ' + o.list.length + ' 筆）' : '我的預約') + '</b>' + o.list.map(r => '<div class="row"><span>' + r.date + ' ' + r.time + (r.status === '待確認' ? '<span class="tag">待確認</span>' : '') +
       '<small>' + (o.isOwner ? (r.proxy ? '☎️ ' : '') + esc(r.name) + '｜' : '') + esc(r.items) + '</small></span>' +
       (r.cancellable ? '<button class="btn" data-act="' + r.id + '">取消／改期</button>' : '<small class="muted">' + C.settings.cancelHours + ' 小時內請傳訊息</small>') + '</div>').join('');
     el.querySelectorAll('[data-act]').forEach(b => b.onclick = () => chooser(o.list.find(r => r.id === b.dataset.act)));
@@ -307,11 +320,15 @@ function chooser(r) {
   const close = () => m.remove();
   m.onclick = e => { if (e.target === m) close(); };
   $('#m-close').onclick = close;
-  $('#m-re').onclick = () => { close(); state.resched = r; state.codes = [...r.codes]; state.addons = [...r.addons]; state.date = ''; state.time = ''; state.step = 'time'; renderTime(); };
+  $('#m-re').onclick = () => { close(); state.resched = r; state.people = r.people || 1; state.codes = [...r.codes]; state.addons = [...r.addons]; state.date = ''; state.time = ''; state.step = 'time'; renderTime(); };
   $('#m-cancel').onclick = async () => {
     if (!confirm('確定要取消 ' + r.date + ' ' + r.time + ' 這筆預約嗎？')) return;
     close();
-    try { await api('cancel', { id: r.id }); renderPick(); } catch (e) { showErr(e); }
+    try {
+      const o = await api('cancel', { id: r.id });
+      if (o.booking.self) { try { if (liff.isInClient()) await liff.sendMessages([{ type: 'text', text: '取消預約 #' + r.id }]); } catch (e) {} }
+      renderCancelled(o.booking);
+    } catch (e) { showErr(e); }
   };
 }
 
