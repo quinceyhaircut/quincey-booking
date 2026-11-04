@@ -139,7 +139,7 @@ function renderPick() {
   if (C.isOwner) h += '<p class="banner">👑 店長模式：下方「預約清單」可幫客人取消／改期；填資料時可切換「代客預約（電話）」</p>';
   h += '<div class="card mine hide" id="mine"></div>';
   h += '<h2>預約人數</h2><div class="seg">' + [1, 2, 3].map(n => '<button class="btn' + (state.people === n ? ' on' : '') + '" data-ppl="' + n + '">' + n + ' 位</button>').join('') + '</div>';
-  if (state.people > 1) h += '<p class="note">ⓘ ' + state.people + ' 位做同一組服務，系統會連續排時段、金額 ×' + state.people + '。若每位項目不同，請在備註寫明</p>';
+  if (state.people > 1) h += '<p class="note">ⓘ ' + state.people + ' 位做同一組服務，時間自動延長、金額 ×' + state.people + '</p>';
   h += '<h2>熱門套餐</h2>';
   C.packages.forEach((p, i) => {
     const sel = JSON.stringify([...p.codes].sort()) === JSON.stringify([...state.codes].sort()) && JSON.stringify([...p.addons].sort()) === JSON.stringify([...state.addons].sort());
@@ -166,12 +166,22 @@ function renderPick() {
   state.notes.forEach(n => h += '<p class="note">ⓘ ' + esc(n) + '</p>');
   if (C.promo.end && nowStr() <= C.promo.end) h += '<p class="note">🎁 ' + esc(C.promo.end.slice(5, 10).replace('-', '/')) + ' 前預約 12 月服務，享原價</p>';
   $('#app').innerHTML = h;
-  document.querySelectorAll('[data-ppl]').forEach(el => el.onclick = () => { state.people = +el.dataset.ppl; renderPick(); });
+  document.querySelectorAll('[data-ppl]').forEach(el => el.onclick = () => { const n = +el.dataset.ppl; const up = n > state.people; state.people = n; renderPick(); if (n > 1 && up) pplPopup(n); });
   document.querySelectorAll('[data-pkg]').forEach(el => el.onclick = () => { const p = C.packages[+el.dataset.pkg]; state.codes = [...p.codes]; state.addons = [...p.addons]; normalize(); state.step = 'time'; renderTime(); });
   document.querySelectorAll('[data-svc]').forEach(el => el.onchange = () => { const c = el.dataset.svc; state.codes = el.checked ? state.codes.concat(c) : state.codes.filter(x => x !== c); renderPick(); });
   document.querySelectorAll('[data-add]').forEach(el => el.onchange = () => { const c = el.dataset.add; state.addons = el.checked ? state.addons.concat(c) : state.addons.filter(x => x !== c); renderPick(); });
   bar(state.codes.length > 0, '下一步：選時間', () => { state.step = 'time'; renderTime(); });
   loadMine();
+}
+
+function pplPopup(n) {
+  const m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = '<div class="box"><b>👥 預約 ' + n + ' 位</b><p>這裡只適合 <b>' + n + ' 位做同一組服務、同一個時段</b>，時間會自動延長。</p>' +
+    '<p class="note">如果每位做的服務不同，請先完成第一位的預約，再回到預約頁另外建立一個預約。</p>' +
+    '<button class="btn primary" id="m-same">都做同一組服務，繼續</button><button class="btn" id="m-one">改回 1 位（不同服務分開約）</button></div>';
+  document.body.appendChild(m);
+  $('#m-same').onclick = () => m.remove();
+  $('#m-one').onclick = () => { m.remove(); state.people = 1; renderPick(); };
 }
 
 function bar(show, label, fn) {
@@ -229,7 +239,7 @@ function renderForm() {
   const v = k => esc(f[k] != null ? f[k] : (c[k] || ''));
   const hair = f.hair != null ? f.hair : (c.hair || '');
   let h = '<button class="btn" id="back">← 改時間</button><h2>填寫資料</h2>';
-  if (C.isOwner) h += '<label class="switch"><input type="checkbox" id="proxy"' + (px ? ' checked' : '') + '><span><b>代客預約（電話）</b><br><small class="muted">幫打電話來的客人預約，不會傳 LINE 給客人</small></span></label>';
+  if (C.isOwner) h += '<label class="switch"><input type="checkbox" id="proxy"' + (px ? ' checked' : '') + '><span><b>代客預約（電話）</b><br><small class="muted">幫打電話來的客人預約；客人用 LINE 預約過的話，系統會用 LINE 通知他</small></span></label>';
   h += '<div class="card">';
   h += '<label>' + (px ? '客人姓名' : '姓名（幫家人預約請填被服務者）') + '</label><input type="text" id="name" value="' + v('name') + '">';
   h += '<label>' + (px ? '客人手機' : '手機') + '</label><input type="tel" id="phone" placeholder="09xxxxxxxx" value="' + v('phone') + '">';
@@ -283,11 +293,11 @@ function renderDone(b) {
   $('#app').innerHTML = '<div class="done"><div class="big">' + (pending ? '⏳' : '✅') + '</div><h2>' + title + '</h2>' +
     '<p><b>' + b.date + ' ' + b.time + '–' + b.end + '</b>' + (b.people > 1 ? '｜' + b.people + ' 位' : '') + '</p><p>' + b.items.map(esc).join('<br>') + '</p><p class="price">預估 $' + b.total.toLocaleString() + (b.from ? ' 起' : '') + '</p>' +
     (b.promo ? '<p class="note">🎁 已享 11/30 前預約原價優惠</p>' : '') +
-    (b.proxy ? '<p class="muted">已寫入日曆，不會傳 LINE 給客人</p>' : pending ? '<p class="muted">店家確認後會用 LINE 通知你</p>' : '<p class="muted">確認訊息已傳到聊天室</p>') +
+    (b.byOwner ? (b.notified ? '<p class="muted">已用 LINE 通知客人新時間</p>' : '<p class="muted">這位客人沒有綁定 LINE，請自行聯絡</p>') : b.proxy ? (b.notified ? '<p class="muted">已寫入日曆，並用 LINE 通知客人</p>' : '<p class="muted">已寫入日曆。這位客人沒有綁定 LINE，請自行聯絡</p>') : pending ? '<p class="muted">店家確認後會用 LINE 通知你</p>' : '<p class="muted">確認訊息已傳到聊天室</p>') +
     (b.proxy ? '' : '<p><button class="btn" id="cal">加入手機行事曆</button></p>') + '<p><button class="btn primary" id="close">完成</button></p></div>';
   if ($('#cal')) $('#cal').onclick = () => liff.openWindow({ url: gcal, external: true });
   $('#close').onclick = () => liff.isInClient() ? liff.closeWindow() : location.reload();
-  if (!b.proxy) remind(b);
+  if (!b.proxy && !b.byOwner) remind(b);
 }
 function remind(b) {
   const hrs = C.settings.cancelHours;
@@ -304,7 +314,7 @@ function renderCancelled(b) {
   $('#bar').classList.add('hide');
   $('#app').innerHTML = '<div class="done"><div class="big">❌</div><h2>已取消預約</h2>' +
     '<p><b>' + esc(b.date + ' ' + b.time + '–' + b.end) + '</b></p><p>' + (C.isOwner && !b.self ? esc(b.name) + '｜' : '') + esc(b.items) + '</p><p class="muted">編號 ' + esc(b.id) + '</p>' +
-    (C.isOwner && !b.self ? '<p class="muted">已取消，不會通知客人，請自行聯絡</p>' : '<p class="muted">取消資訊已傳到聊天室，期待下次為你服務 🙏</p>') +
+    (C.isOwner && !b.self ? (b.notified ? '<p class="muted">已用 LINE 通知客人</p>' : '<p class="muted">這位客人沒有綁定 LINE，請自行聯絡</p>') : '<p class="muted">取消資訊已傳到聊天室，期待下次為你服務 🙏</p>') +
     '<p><button class="btn primary" id="again">重新預約</button></p></div>';
   $('#again').onclick = () => { state.step = 'pick'; renderPick(); };
 }
