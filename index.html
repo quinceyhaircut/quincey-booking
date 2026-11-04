@@ -127,8 +127,8 @@ function normalize() {
   if (c.some(x => x.startsWith('TR_')) && c.some(x => W.includes(x) || x === 'CUT_RINSE')) {
     c = c.filter(x => !W.includes(x) && x !== 'CUT_RINSE'); if (!c.includes('CUT')) c.unshift('CUT'); notes.push('護髮已含洗髮及吹整，已幫你改成剪髮＋護髮');
   }
-  if (c.filter(x => W.includes(x)).length > 1) { const last = c.filter(x => W.includes(x)).pop(); c = c.filter(x => !W.includes(x) || x === last); notes.push('洗剪吹整只能選一種'); }
-  if (c.includes('PERM') && c.some(x => ['CUT', 'CUT_RINSE'].concat(W).includes(x))) { c = c.filter(x => !['CUT', 'CUT_RINSE'].concat(W).includes(x)); notes.push('局部燙已含剪髮'); }
+  if (c.filter(x => W.includes(x)).length > 1) { const last = c.filter(x => W.includes(x)).pop(); c = c.filter(x => !W.includes(x) || x === last); notes.push('剪洗吹整只能選一種'); }
+  if (c.some(x => x.startsWith('PERM')) && c.some(x => ['CUT', 'CUT_RINSE'].concat(W).includes(x))) { c = c.filter(x => !['CUT', 'CUT_RINSE'].concat(W).includes(x)); notes.push('燙髮已含剪髮'); }
   if ((c.some(x => x.startsWith('TR_')) || c.some(x => W.includes(x))) && c.some(x => x.startsWith('WASH_'))) { c = c.filter(x => !x.startsWith('WASH_')); notes.push('此項目已含洗髮'); }
   const allowed = new Set(); c.forEach(x => (svc(x) || { addons: [] }).addons.forEach(a => allowed.add(a)));
   state.codes = c; state.addons = state.addons.filter(a => allowed.has(a)); state.notes = notes;
@@ -143,15 +143,32 @@ function total() {
 }
 
 /* 畫面：選服務 */
-const SHORT = { CUT: '單剪', CUT_RINSE: '沖洗一次＋自助式吹乾', KID_CUT: '單剪', KID_RINSE: '沖洗一次＋自助式吹乾', KID_WCB: '洗剪吹整' };
+const SHORT = { CUT: '單剪', CUT_RINSE: '沖洗一次＋自助式吹乾', KID_CUT: '單剪', KID_RINSE: '沖洗一次＋自助式吹乾', KID_WCB: '剪洗吹整' };
 const label = s => SHORT[s.code] || s.name;
 function cats() {
   const out = [];
   C.services.filter(s => !s.hidden).forEach(s => { let g = out.find(x => x.cat === s.cat); if (!g) out.push(g = { cat: s.cat, list: [] }); g.list.push(s); });
   return out;
 }
+/* 重複防呆：回傳提醒文字，沒重複就回傳空字串 */
+const CUT_RE = /^(CUT|CUT_RINSE|WCB|WCB_NR|KID_CUT|KID_RINSE|KID_WCB|HOME|PERM.*)$/;
+const WASHIN_RE = /^(TR_.*|WCB|WCB_NR|KID_WCB)$/;
+function conflict(codes, addons) {
+  const cuts = codes.filter(c => CUT_RE.test(c)).map(c => label(svc(c)));
+  if (addons.includes('CUT_ADD')) cuts.push('加購剪髮');
+  if (cuts.length > 1) return '「' + cuts[0] + '」和「' + cuts[1] + '」都含剪髮，剪髮只能選一項。';
+  const wi = codes.find(c => WASHIN_RE.test(c)), w = codes.find(c => c.startsWith('WASH_'));
+  if (wi && w) return '「' + label(svc(wi)) + '」已含洗髮，不需要再選「' + label(svc(w)) + '」。';
+  return '';
+}
+function dupPopup(msg) {
+  const m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = '<div class="box"><b>⚠️ 已重複選項</b><p>' + esc(msg) + '</p><p class="muted">剛剛點的項目沒有加入，請確認後再選。</p><button class="btn primary" id="m-dup">知道了</button></div>';
+  document.body.appendChild(m);
+  $('#m-dup').onclick = () => m.remove();
+}
 function renderPick() {
-  const allowed = normalize();
+  normalize();
   const noteEl = $('#svc-note'); if (noteEl) state.note = noteEl.value;
   let h = '';
   if (C.customer.returning && !C.isOwner) h += '<p class="muted">' + esc(C.customer.name) + '，歡迎回來！</p>';
@@ -168,8 +185,9 @@ function renderPick() {
   h += '<h2>或自己選服務</h2><p class="muted" style="margin:-6px 0 8px">點類別看選項，每個類別選一項，可同時選多個類別</p>';
   cats().forEach((g, gi) => {
     const picked = g.list.find(s => state.codes.includes(s.code));
+    const pAdds = picked ? (picked.addons || []).filter(a => state.addons.includes(a) && add(a)) : [];
     const open = state.open.includes(g.cat);
-    h += '<div class="card grp' + (picked ? ' has' : '') + '"><div class="hd" data-cat="' + gi + '"><div><b>' + esc(g.cat) + '</b>' + (picked ? '<small>✓ ' + esc(label(picked)) + '</small>' : '') + '</div><span class="arw">' + (open ? '收合 ▲' : (g.list.length > 1 ? g.list.length + ' 個選項 ▼' : '選擇 ▼')) + '</span></div>';
+    h += '<div class="card grp' + (picked ? ' has' : '') + '"><div class="hd" data-cat="' + gi + '"><div><b>' + esc(g.cat) + '</b>' + (picked ? '<small>✓ ' + esc([label(picked)].concat(pAdds.map(a => add(a).name)).join('＋')) + '</small>' : '') + '</div><span class="arw">' + (open ? '收合 ▲' : (g.list.length > 1 ? g.list.length + ' 個選項 ▼' : '選擇 ▼')) + '</span></div>';
     if (open) {
       h += '<div class="opts">';
       g.list.forEach(s => {
@@ -177,24 +195,25 @@ function renderPick() {
         h += '<div class="opt' + (on ? ' sel' : '') + '" data-svc="' + s.code + '"><span class="dot"></span><span class="t">' + esc(label(s)) +
           (s.confirm ? '<span class="tag">需店家確認</span>' : '') + '<small>約 ' + s.min + ' 分鐘' + (s.note && !hairNote(s.code) ? '｜' + esc(s.note) : '') + (hairNote(s.code) ? '<br>' + esc(hairNote(s.code)) : '') + '</small></span><span class="price">' + fmt(priceOf(s.code)) + '</span></div>';
       });
+      const al = picked ? C.addons.filter(a => (picked.addons || []).includes(a.code)) : [];
+      if (al.length) {
+        h += '<div class="cat" style="margin:10px 6px 4px">「' + esc(label(picked)) + '」可加購</div>';
+        al.forEach(a => {
+          const on = state.addons.includes(a.code);
+          h += '<label class="opt' + (on ? ' sel' : '') + '"><input type="checkbox" data-add="' + a.code + '"' + (on ? ' checked' : '') + ' style="width:18px;height:18px;margin-top:3px;accent-color:var(--p)"><span class="t">' + esc(a.name) + '<small>' + (a.min ? '+約 ' + a.min + ' 分鐘' : '') + '</small></span><span class="price">+$' + a.price + '</span></label>';
+        });
+      }
       h += '</div>';
     }
     h += '</div>';
   });
   state.notes.forEach(n => h += '<p class="note">ⓘ ' + esc(n) + '</p>');
-  if (allowed.size) {
-    h += '<h2>加購</h2>';
-    C.addons.filter(a => allowed.has(a.code)).forEach(a => {
-      const on = state.addons.includes(a.code);
-      h += '<label class="card svc' + (on ? ' sel' : '') + '"><input type="checkbox" data-add="' + a.code + '"' + (on ? ' checked' : '') + '><span class="t">' + esc(a.name) + '<small>' + (a.min ? '+約 ' + a.min + ' 分鐘' : '') + '</small></span><span class="price">+$' + a.price + '</span></label>';
-    });
-  }
   if (state.codes.length) {
     h += '<h2>預約人數</h2><div class="seg">' + [1, 2, 3].map(n => '<button class="btn' + (state.people === n ? ' on' : '') + '" data-ppl="' + n + '">' + n + ' 位</button>').join('') + '</div>';
     if (state.people > 1) h += '<p class="note">ⓘ ' + state.people + ' 位做同一組服務、同一個時段，時間自動延長、金額 ×' + state.people + '。不同服務請約完第一位後，另外建立一個預約</p>';
     h += '<h2>備註說明（選填）</h2><textarea id="svc-note" rows="3" placeholder="例如想剪的造型、特殊染髮顏色、同行家人的需求等">' + esc(state.note) + '</textarea>';
   }
-  if (C.promo.end && nowStr() <= C.promo.end) h += '<p class="note">🎁 ' + esc(C.promo.end.slice(5, 10).replace('-', '/')) + ' 前預約 12 月服務，享原價</p>';
+  if (C.promo.end && nowStr() <= C.promo.end) h += '<p class="note">🎁 12/1 起部分服務品項調漲，' + esc(C.promo.end.slice(5, 10).replace('-', '/')) + ' 前預約 12 月服務享原價</p>';
   $('#app').innerHTML = h;
   const keepNote = () => { const e = $('#svc-note'); if (e) state.note = e.value; };
   if ($('#svc-note')) $('#svc-note').oninput = keepNote;
@@ -204,10 +223,19 @@ function renderPick() {
   document.querySelectorAll('.opt[data-svc]').forEach(el => el.onclick = () => {
     keepNote(); const c = el.dataset.svc; const s = svc(c);
     const same = C.services.filter(x => x.cat === s.cat).map(x => x.code);
-    state.codes = state.codes.includes(c) ? state.codes.filter(x => x !== c) : state.codes.filter(x => !same.includes(x)).concat(c);
+    const next = state.codes.includes(c) ? state.codes.filter(x => x !== c) : state.codes.filter(x => !same.includes(x)).concat(c);
+    const msg = conflict(next, state.addons);
+    if (msg) { dupPopup(msg); return; }
+    state.codes = next;
     renderPick();
   });
-  document.querySelectorAll('[data-add]').forEach(el => el.onchange = () => { keepNote(); const c = el.dataset.add; state.addons = el.checked ? state.addons.concat(c) : state.addons.filter(x => x !== c); renderPick(); });
+  document.querySelectorAll('[data-add]').forEach(el => el.onchange = () => {
+    keepNote(); const c = el.dataset.add;
+    const next = el.checked ? state.addons.concat(c) : state.addons.filter(x => x !== c);
+    const msg = conflict(state.codes, next);
+    if (msg) { el.checked = false; dupPopup(msg); return; }
+    state.addons = next; renderPick();
+  });
   bar(state.codes.length > 0, '下一步：選時間', () => { keepNote(); state.step = 'time'; renderTime(); });
   loadMine();
 }
