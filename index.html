@@ -383,7 +383,7 @@ function renderForm() {
   h += '<label>' + (px ? '客人姓名' : '姓名（幫家人預約請填被服務者）') + '</label><input type="text" id="name" value="' + v('name') + '">';
   h += '<label>' + (px ? '客人手機' : '手機') + '</label><input type="tel" id="phone" placeholder="09xxxxxxxx" value="' + v('phone') + '">';
   h += '<label>生日（年/月/日，選填）</label><input type="date" id="birthday" min="1920-01-01" max="' + C.today + '" value="' + esc(toISODate(f.birthday != null ? f.birthday : (c.birthday || ''))) + '">';
-  h += '<label>髮長' + (needHair() ? '（必填，護髮依髮長收費）' : '') + '</label><select id="hair"><option value="">請選擇</option>' + ['短', '中', '長'].map(x => '<option value="' + x + '"' + (hair === x ? ' selected' : '') + '>' + HAIR_TXT[x] + '</option>').join('') + '</select>';
+  if (state.codes.includes('DYE_SP')) h += '<label>髮長（必填，特殊染髮報價用）</label><select id="hair"><option value="">請選擇</option>' + ['短', '中', '長'].map(x => '<option value="' + x + '"' + (hair === x ? ' selected' : '') + '>' + HAIR_TXT[x] + '</option>').join('') + '</select>';
   if (px || !c.returning) h += '<label>是否來過昆希剪髮？</label><div class="seg"><button class="btn' + (f.isNew === false ? ' on' : '') + '" data-new="0">來過</button><button class="btn' + (f.isNew === true ? ' on' : '') + '" data-new="1">第一次</button></div>';
   if (state.codes.includes('HOME')) h += '<label>到府地址</label><input type="text" id="address" value="' + esc(f.address || '') + '">';
   h += '</div>';
@@ -391,18 +391,19 @@ function renderForm() {
   $('#app').innerHTML = h;
   $('#back').onclick = () => { state.form = read(); state.step = 'time'; renderTime(); };
   document.querySelectorAll('[data-new]').forEach(el => el.onclick = () => { state.form = Object.assign(read(), { isNew: el.dataset.new === '1' }); renderForm(); });
-  $('#hair').onchange = () => { state.form = read(); bar(true, px ? '確認代客預約' : '確認預約', submit); };
+  if ($('#hair')) $('#hair').onchange = () => { state.form = read(); bar(true, px ? '確認代客預約' : '確認預約', submit); };
   if ($('#proxy')) $('#proxy').onchange = () => { state.proxy = $('#proxy').checked; state.form = { hair: '' }; renderForm(); };
   bar(true, px ? '確認代客預約' : '確認預約', submit);
 }
 function read() {
   const g = id => ($('#' + id) || {}).value;
-  return Object.assign({}, state.form, { name: g('name'), phone: (g('phone') || '').replace(/\D/g, ''), birthday: g('birthday'), hair: g('hair'), address: g('address'), note: state.note });
+  return Object.assign({}, state.form, { name: g('name'), phone: (g('phone') || '').replace(/\D/g, ''), birthday: g('birthday'), hair: $('#hair') ? g('hair') : ((state.form || {}).hair || hairNow()), address: g('address'), note: state.note });
 }
 async function submit() {
   state.form = read();
   const label = $('#next').textContent;
-  if (needHair() && !state.form.hair) { showErr('護髮依髮長收費，請先選擇髮長'); return; }
+  if (needHair() && !state.form.hair) { showErr('護髮依髮長收費，請回上一步選擇髮長'); return; }
+  if (state.codes.includes('DYE_SP') && !state.form.hair) { showErr('特殊染髮請選擇髮長'); return; }
   if (!state.proxy && !C.customer.returning && state.form.isNew == null) { showErr('請選擇是否來過昆希剪髮'); return; }
   $('#next').disabled = true; $('#next').textContent = '送出中…';
   try {
