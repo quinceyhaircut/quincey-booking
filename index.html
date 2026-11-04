@@ -53,6 +53,17 @@ input[type=text],input[type=tel],input[type=date],select,textarea{width:100%;pad
 .banner{background:var(--p2);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14px}
 .switch{display:flex;align-items:center;gap:8px;background:#fff7ec;border:1px solid #f1d8b8;border-radius:10px;padding:10px 12px;margin-top:10px}
 .switch input{width:18px;height:18px;accent-color:var(--p)}
+.grp{padding:0;overflow:hidden}
+.grp .hd{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;cursor:pointer}
+.grp .hd b{font-size:15px}.grp .hd small{display:block;color:var(--p);font-size:13px}
+.grp .hd .arw{color:var(--muted);font-size:13px;white-space:nowrap}
+.grp.has{border-color:var(--p)}
+.grp .opts{border-top:1px solid var(--line);padding:6px 10px 10px;background:#fcfbfe}
+.opt{display:flex;gap:10px;align-items:flex-start;padding:10px 6px;border-bottom:1px dashed var(--line);cursor:pointer}
+.opt:last-child{border-bottom:0}
+.opt .dot{width:18px;height:18px;border:2px solid var(--line);border-radius:50%;flex:0 0 auto;margin-top:3px}
+.opt.sel .dot{border-color:var(--p);background:radial-gradient(var(--p) 45%,#fff 50%)}
+.opt .t{flex:1}.opt small{color:var(--muted);display:block;font-size:13px}
 </style>
 </head>
 <body>
@@ -64,7 +75,7 @@ input[type=text],input[type=tel],input[type=date],select,textarea{width:100%;pad
 <script>
 const LIFF_ID = '2012366833-i1UEQInD';
 const API = 'https://script.google.com/macros/s/AKfycbx3MClXu-KSg9ygjtWzXZTYG23vYzqhtm-cEZQHYl2usahTFYYLM9HDfZ24pyqLkWYIjQ/exec';
-let C = null, idToken = '', state = { codes: [], addons: [], date: '', time: '', quote: null, step: 'pick', notes: [], resched: null, proxy: false, people: 1 };
+let C = null, idToken = '', state = { codes: [], addons: [], date: '', time: '', quote: null, step: 'pick', notes: [], resched: null, proxy: false, people: 1, note: '', open: [] };
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -132,15 +143,21 @@ function total() {
 }
 
 /* 畫面：選服務 */
+const SHORT = { CUT: '單剪', CUT_RINSE: '沖洗一次＋自助式吹乾', KID_CUT: '單剪', KID_RINSE: '沖洗一次＋自助式吹乾', KID_WCB: '洗剪吹整' };
+const label = s => SHORT[s.code] || s.name;
+function cats() {
+  const out = [];
+  C.services.filter(s => !s.hidden).forEach(s => { let g = out.find(x => x.cat === s.cat); if (!g) out.push(g = { cat: s.cat, list: [] }); g.list.push(s); });
+  return out;
+}
 function renderPick() {
   const allowed = normalize();
+  const noteEl = $('#svc-note'); if (noteEl) state.note = noteEl.value;
   let h = '';
   if (C.customer.returning && !C.isOwner) h += '<p class="muted">' + esc(C.customer.name) + '，歡迎回來！</p>';
   if (C.isOwner) h += '<p class="banner">👑 店長模式：下方「預約清單」可幫客人取消／改期；填資料時可切換「代客預約（電話）」</p>';
   h += '<div class="card mine hide" id="mine"></div>';
-  h += '<h2>預約人數</h2><div class="seg">' + [1, 2, 3].map(n => '<button class="btn' + (state.people === n ? ' on' : '') + '" data-ppl="' + n + '">' + n + ' 位</button>').join('') + '</div>';
-  if (state.people > 1) h += '<p class="note">ⓘ ' + state.people + ' 位做同一組服務，時間自動延長、金額 ×' + state.people + '</p>';
-  h += '<h2>熱門套餐</h2>';
+  h += '<h2>熱門組合</h2><p class="muted" style="margin:-6px 0 8px">點一下直接選時間</p>';
   C.packages.forEach((p, i) => {
     const sel = JSON.stringify([...p.codes].sort()) === JSON.stringify([...state.codes].sort()) && JSON.stringify([...p.addons].sort()) === JSON.stringify([...state.addons].sort());
     const price = p.codes.reduce((s, c) => s + priceOf(c).price, 0) + p.addons.reduce((s, a) => s + add(a).price, 0);
@@ -148,14 +165,23 @@ function renderPick() {
     const names = p.codes.map(c => svc(c).name).concat(p.addons.map(a => add(a).name)).join('＋');
     h += '<div class="card pkg' + (sel ? ' sel' : '') + '" data-pkg="' + i + '"><div><b>' + esc(p.name) + '</b><small>' + esc(names) + '</small></div><span class="price">$' + price.toLocaleString() + (pfrom ? ' 起' : '') + '</span></div>';
   });
-  h += '<h2>或自己選服務</h2>';
-  let cat = '';
-  C.services.filter(s => !s.hidden).forEach(s => {
-    if (s.cat !== cat) { cat = s.cat; h += '<div class="cat">' + esc(cat) + '</div>'; }
-    const on = state.codes.includes(s.code);
-    h += '<label class="card svc' + (on ? ' sel' : '') + '"><input type="checkbox" data-svc="' + s.code + '"' + (on ? ' checked' : '') + '><span class="t">' + esc(s.name) +
-      (s.confirm ? '<span class="tag">需店家確認</span>' : '') + '<small>約 ' + s.min + ' 分鐘' + (s.note && !hairNote(s.code) ? '｜' + esc(s.note) : '') + (hairNote(s.code) ? '<br>' + esc(hairNote(s.code)) : '') + '</small></span><span class="price">' + fmt(priceOf(s.code)) + '</span></label>';
+  h += '<h2>或自己選服務</h2><p class="muted" style="margin:-6px 0 8px">點類別看選項，每個類別選一項，可同時選多個類別</p>';
+  cats().forEach((g, gi) => {
+    const picked = g.list.find(s => state.codes.includes(s.code));
+    const open = state.open.includes(g.cat);
+    h += '<div class="card grp' + (picked ? ' has' : '') + '"><div class="hd" data-cat="' + gi + '"><div><b>' + esc(g.cat) + '</b>' + (picked ? '<small>✓ ' + esc(label(picked)) + '</small>' : '') + '</div><span class="arw">' + (open ? '收合 ▲' : (g.list.length > 1 ? g.list.length + ' 個選項 ▼' : '選擇 ▼')) + '</span></div>';
+    if (open) {
+      h += '<div class="opts">';
+      g.list.forEach(s => {
+        const on = state.codes.includes(s.code);
+        h += '<div class="opt' + (on ? ' sel' : '') + '" data-svc="' + s.code + '"><span class="dot"></span><span class="t">' + esc(label(s)) +
+          (s.confirm ? '<span class="tag">需店家確認</span>' : '') + '<small>約 ' + s.min + ' 分鐘' + (s.note && !hairNote(s.code) ? '｜' + esc(s.note) : '') + (hairNote(s.code) ? '<br>' + esc(hairNote(s.code)) : '') + '</small></span><span class="price">' + fmt(priceOf(s.code)) + '</span></div>';
+      });
+      h += '</div>';
+    }
+    h += '</div>';
   });
+  state.notes.forEach(n => h += '<p class="note">ⓘ ' + esc(n) + '</p>');
   if (allowed.size) {
     h += '<h2>加購</h2>';
     C.addons.filter(a => allowed.has(a.code)).forEach(a => {
@@ -163,21 +189,33 @@ function renderPick() {
       h += '<label class="card svc' + (on ? ' sel' : '') + '"><input type="checkbox" data-add="' + a.code + '"' + (on ? ' checked' : '') + '><span class="t">' + esc(a.name) + '<small>' + (a.min ? '+約 ' + a.min + ' 分鐘' : '') + '</small></span><span class="price">+$' + a.price + '</span></label>';
     });
   }
-  state.notes.forEach(n => h += '<p class="note">ⓘ ' + esc(n) + '</p>');
+  if (state.codes.length) {
+    h += '<h2>預約人數</h2><div class="seg">' + [1, 2, 3].map(n => '<button class="btn' + (state.people === n ? ' on' : '') + '" data-ppl="' + n + '">' + n + ' 位</button>').join('') + '</div>';
+    if (state.people > 1) h += '<p class="note">ⓘ ' + state.people + ' 位做同一組服務、同一個時段，時間自動延長、金額 ×' + state.people + '。不同服務請約完第一位後，另外建立一個預約</p>';
+    h += '<h2>備註說明（選填）</h2><textarea id="svc-note" rows="3" placeholder="例如想剪的造型、特殊染髮顏色、同行家人的需求等">' + esc(state.note) + '</textarea>';
+  }
   if (C.promo.end && nowStr() <= C.promo.end) h += '<p class="note">🎁 ' + esc(C.promo.end.slice(5, 10).replace('-', '/')) + ' 前預約 12 月服務，享原價</p>';
   $('#app').innerHTML = h;
-  document.querySelectorAll('[data-ppl]').forEach(el => el.onclick = () => { const n = +el.dataset.ppl; const up = n > state.people; state.people = n; renderPick(); if (n > 1 && up) pplPopup(n); });
-  document.querySelectorAll('[data-pkg]').forEach(el => el.onclick = () => { const p = C.packages[+el.dataset.pkg]; state.codes = [...p.codes]; state.addons = [...p.addons]; normalize(); state.step = 'time'; renderTime(); });
-  document.querySelectorAll('[data-svc]').forEach(el => el.onchange = () => { const c = el.dataset.svc; state.codes = el.checked ? state.codes.concat(c) : state.codes.filter(x => x !== c); renderPick(); });
-  document.querySelectorAll('[data-add]').forEach(el => el.onchange = () => { const c = el.dataset.add; state.addons = el.checked ? state.addons.concat(c) : state.addons.filter(x => x !== c); renderPick(); });
-  bar(state.codes.length > 0, '下一步：選時間', () => { state.step = 'time'; renderTime(); });
+  const keepNote = () => { const e = $('#svc-note'); if (e) state.note = e.value; };
+  if ($('#svc-note')) $('#svc-note').oninput = keepNote;
+  document.querySelectorAll('[data-cat]').forEach(el => el.onclick = () => { keepNote(); const c = cats()[+el.dataset.cat].cat; state.open = state.open.includes(c) ? state.open.filter(x => x !== c) : state.open.concat(c); renderPick(); });
+  document.querySelectorAll('[data-ppl]').forEach(el => el.onclick = () => { keepNote(); const n = +el.dataset.ppl; const up = n > state.people; state.people = n; renderPick(); if (n > 1 && up) pplPopup(n); });
+  document.querySelectorAll('[data-pkg]').forEach(el => el.onclick = () => { keepNote(); const p = C.packages[+el.dataset.pkg]; state.codes = [...p.codes]; state.addons = [...p.addons]; normalize(); state.step = 'time'; renderTime(); });
+  document.querySelectorAll('.opt[data-svc]').forEach(el => el.onclick = () => {
+    keepNote(); const c = el.dataset.svc; const s = svc(c);
+    const same = C.services.filter(x => x.cat === s.cat).map(x => x.code);
+    state.codes = state.codes.includes(c) ? state.codes.filter(x => x !== c) : state.codes.filter(x => !same.includes(x)).concat(c);
+    renderPick();
+  });
+  document.querySelectorAll('[data-add]').forEach(el => el.onchange = () => { keepNote(); const c = el.dataset.add; state.addons = el.checked ? state.addons.concat(c) : state.addons.filter(x => x !== c); renderPick(); });
+  bar(state.codes.length > 0, '下一步：選時間', () => { keepNote(); state.step = 'time'; renderTime(); });
   loadMine();
 }
 
 function pplPopup(n) {
   const m = document.createElement('div'); m.className = 'modal';
   m.innerHTML = '<div class="box"><b>👥 預約 ' + n + ' 位</b><p>這裡只適合 <b>' + n + ' 位做同一組服務、同一個時段</b>，時間會自動延長。</p>' +
-    '<p class="note">如果每位做的服務不同，請先完成第一位的預約，再回到預約頁另外建立一個預約。</p>' +
+    '<p class="note">每位做的服務不同的話：請先完成第一位的預約，再回到預約頁另外建立一個預約。</p>' +
     '<button class="btn primary" id="m-same">都做同一組服務，繼續</button><button class="btn" id="m-one">改回 1 位（不同服務分開約）</button></div>';
   document.body.appendChild(m);
   $('#m-same').onclick = () => m.remove();
@@ -247,8 +285,8 @@ function renderForm() {
   h += '<label>髮長' + (needHair() ? '（必填，護髮依髮長收費）' : '') + '</label><select id="hair"><option value="">請選擇</option>' + ['短', '中', '長'].map(x => '<option value="' + x + '"' + (hair === x ? ' selected' : '') + '>' + HAIR_TXT[x] + '</option>').join('') + '</select>';
   if (px || !c.returning) h += '<label>是否來過昆希剪髮？</label><div class="seg"><button class="btn' + (f.isNew === false ? ' on' : '') + '" data-new="0">來過</button><button class="btn' + (f.isNew === true ? ' on' : '') + '" data-new="1">第一次</button></div>';
   if (state.codes.includes('HOME')) h += '<label>到府地址</label><input type="text" id="address" value="' + esc(f.address || '') + '">';
-  h += '<label>備註（選填，例如想剪的造型、特殊染髮需求等）</label><textarea id="note" rows="3">' + esc(f.note || '') + '</textarea></div>';
-  h += '<div class="card"><b>' + state.date + ' ' + state.time + '</b>' + (state.people > 1 ? '｜' + state.people + ' 位' : '') + '<br>' + state.codes.map(x => esc(svc(x).name)).concat(state.addons.map(a => '加購' + esc(add(a).name))).join('、') + '</div>';
+  h += '</div>';
+  h += '<div class="card"><b>' + state.date + ' ' + state.time + '</b>' + (state.people > 1 ? '｜' + state.people + ' 位' : '') + '<br>' + state.codes.map(x => esc(svc(x).name)).concat(state.addons.map(a => '加購' + esc(add(a).name))).join('、') + (state.note ? '<br><small class="muted">備註：' + esc(state.note) + '</small>' : '') + '</div>';
   $('#app').innerHTML = h;
   $('#back').onclick = () => { state.form = read(); state.step = 'time'; renderTime(); };
   document.querySelectorAll('[data-new]').forEach(el => el.onclick = () => { state.form = Object.assign(read(), { isNew: el.dataset.new === '1' }); renderForm(); });
@@ -258,7 +296,7 @@ function renderForm() {
 }
 function read() {
   const g = id => ($('#' + id) || {}).value;
-  return Object.assign({}, state.form, { name: g('name'), phone: (g('phone') || '').replace(/\D/g, ''), birthday: g('birthday'), hair: g('hair'), address: g('address'), note: g('note') });
+  return Object.assign({}, state.form, { name: g('name'), phone: (g('phone') || '').replace(/\D/g, ''), birthday: g('birthday'), hair: g('hair'), address: g('address'), note: state.note });
 }
 async function submit() {
   state.form = read();
@@ -287,7 +325,7 @@ function renderDone(b) {
   $('#bar').classList.add('hide');
   const pending = b.status === '待確認';
   const title = b.rescheduled ? '改期成功' : b.proxy ? '已代客預約' : (pending ? '已送出，待店家確認' : '預約成功');
-  state.resched = null; state.proxy = false; state.people = 1;
+  state.resched = null; state.proxy = false; state.people = 1; state.note = '';
   const gcal = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent('昆希剪髮預約') +
     '&dates=' + b.date.replace(/-/g, '') + 'T' + b.time.replace(':', '') + '00/' + b.date.replace(/-/g, '') + 'T' + b.end.replace(':', '') + '00&ctz=Asia/Taipei&details=' + encodeURIComponent(b.items.join('、') + '\n編號 ' + b.id);
   $('#app').innerHTML = '<div class="done"><div class="big">' + (pending ? '⏳' : '✅') + '</div><h2>' + title + '</h2>' +
