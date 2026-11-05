@@ -80,6 +80,11 @@ let C = null, idToken = '', state = { codes: [], addons: [], date: '', time: '',
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+var _mineP = null, _mineAt = 0;
+function mineData() {
+  if (!_mineP || Date.now() - _mineAt > 20000) { _mineAt = Date.now(); _mineP = api('mine').catch(e => { _mineP = null; throw e; }); }
+  return _mineP;
+}
 async function api(action, data) {
   const res = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action, idToken }, data || {})) });
   const o = await res.json();
@@ -87,16 +92,18 @@ async function api(action, data) {
     if (/剛被預約/.test(o.error || '') && C && C.avail) C.avail.got = 0;   // 空檔過期，下次重抓
     throw new Error(o.error || '發生錯誤');
   }
-  if (['book', 'cancel', 'reschedule'].includes(action) && C && C.avail) C.avail.got = 0;
+  if (['book', 'cancel', 'reschedule', 'bind'].includes(action)) { _mineP = null; if (C && C.avail) C.avail.got = 0; }
   return o;
 }
 
 /* 空檔：打開頁面時一次載入 20 天，點日期／改服務都在手機上直接算 */
 function setAvail(a) { if (C) C.avail = a ? Object.assign(a, { got: Date.now() }) : null; }
 function availFresh() { return C.avail && C.avail.days && Date.now() - C.avail.got < 180000; }
-function localSlots(date, minutes, skipLunch) {
-  const A = C.avail, d = A.days[date];
-  if (!d || d.closed) return { closed: true, slots: [] };
+const tmin = s => { const [a, b] = String(s).split(':').map(Number); return a * 60 + (b || 0); };
+function localSlots(date, minutes, skipLunch, excl) {
+  const A = C.avail, d0 = A.days[date];
+  if (!d0 || d0.closed) return { closed: true, slots: [] };
+  const d = { busy: excl && excl.date === date ? d0.busy.filter(x => !(x[0] === tmin(excl.time) - A.buf && x[1] === tmin(excl.end) + A.buf)) : d0.busy };
   const ov = (a, b, l) => l.some(x => a < x[1] && b > x[0]);
   const lunchOk = l => { for (let x = A.ls; x + A.len <= A.le; x += A.unit) if (!ov(x, x + A.len, l)) return true; return false; };
   const nowM = A.nowMin + Math.floor((Date.now() - A.got) / 60000);
@@ -391,16 +398,19 @@ function renderTime() {
 }
 function closedMsg(d) { return (+d.slice(5, 7)) + '/' + (+d.slice(8)) + '（' + '日一二三四五六'.charAt(new Date(Date.parse(d + 'T00:00:00+08:00') + 8 * 36e5).getUTCDay()) + '）抱歉，本日我們店休，請再選擇其他日期 🙏'; }
 async function loadSlots() {
-  if (!state.resched && C.avail && C.avail.days && C.avail.days[state.date] && C.avail.days[state.date].closed) { $('#slots').innerHTML = '<p class="muted">' + closedMsg(state.date) + '</p>'; $('#next').disabled = true; return; }
+  if (C.avail && C.avail.days && C.avail.days[state.date] && C.avail.days[state.date].closed) { $('#slots').innerHTML = '<p class="muted">' + closedMsg(state.date) + '</p>'; $('#next').disabled = true; return; }
   try {
     let o;
-    if (!state.resched && C.avail !== undefined) {
+    if (C.avail !== undefined) {
       if (!availFresh()) {
         $('#slots').innerHTML = '<p class="muted">更新空檔中…</p>';
         try { setAvail((await api('avail')).avail); } catch (e) {}
       }
     }
-    if (!state.resched && availFresh()) {
+    if (state.resched && availFresh() && state.resched.end) {
+      const r = state.resched;
+      o = Object.assign(localSlots(state.date, tmin(r.end) - tmin(r.time), r.codes.includes('HOME'), r), { quote: null });
+    } else if (!state.resched && availFresh()) {
       const t = total();
       o = Object.assign(localSlots(state.date, t.m, state.codes.includes('HOME')), { quote: { minutes: t.m, total: t.t, from: t.from, promo: promoUsed() } });
     } else {
@@ -519,7 +529,7 @@ function renderCancelled(b) {
 /* 我的預約 */
 async function loadMine() {
   try {
-    const o = await api('mine');
+    const o = await mineData();
     if (!o.list.length || state.step !== 'pick') return;
     const el = $('#mine'); if (!el) return;
     el.classList.remove('hide');
@@ -555,6 +565,7 @@ function chooser(r) {
     await liff.init({ liffId: LIFF_ID });
     if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
     idToken = liff.getIDToken();
+    mineData().catch(() => {});   // 預約清單和主資料同時抓
     // 先用上次存的服務與價目畫出畫面，背景同時抓最新資料
     let cached = null;
     try { cached = JSON.parse(localStorage.getItem('qcfg') || 'null'); } catch (e) {}
