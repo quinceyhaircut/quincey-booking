@@ -91,10 +91,18 @@ function mineData() {
   if (!_mineP || Date.now() - _mineAt > 20000) { _mineAt = Date.now(); _mineP = api('mine').catch(e => { _mineP = null; throw e; }); }
   return _mineP;
 }
+function tokenStale() { try { const m = atob(idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')).match(/"exp":(\d+)/); return m && +m[1] * 1000 < Date.now() + 120000; } catch (e) { return false; } }
+function relogin() {   // 30 秒內只重試一次，避免無限重整
+  try { if (+sessionStorage.getItem('rl') > Date.now() - 30000) return false; sessionStorage.setItem('rl', Date.now()); } catch (e) {}
+  if (liff.isInClient()) { location.reload(); return true; }
+  try { liff.logout(); } catch (e) {} liff.login({ redirectUri: location.origin + location.pathname }); return true;
+}
 async function api(action, data) {
+  if (idToken && tokenStale() && relogin()) throw new Error('登入已過期，正在重新登入…');
   const res = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action, idToken }, data || {})) });
   const o = await res.json();
   if (!o.ok) {
+    if (/登入已過期/.test(o.error || '') && relogin()) throw new Error('登入已過期，正在重新登入…');
     if (/剛被預約/.test(o.error || '') && C && C.avail) C.avail.got = 0;   // 空檔過期，下次重抓
     throw new Error(o.error || '發生錯誤');
   }
@@ -617,6 +625,7 @@ function chooser(r) {
     await liff.init({ liffId: LIFF_ID });
     if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
     idToken = liff.getIDToken();
+    if (tokenStale() && relogin()) return;   // 登入憑證 1 小時過期：自動重新登入
     mineData().catch(() => {});   // 預約清單和主資料同時抓
     // 先用上次存的服務與價目畫出畫面，背景同時抓最新資料
     let cached = null;
