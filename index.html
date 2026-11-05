@@ -338,7 +338,7 @@ function renderTime() {
     const pk = pkgOver(state.codes, state.addons, state.date), cp = curPkg();
     h = '<div class="seg"><button class="btn" id="back">← 改服務／再加服務</button><button class="btn" id="clr" style="flex:0 0 auto;border-color:var(--line);color:var(--muted)">✕ 全部清除重選</button></div>';
     h += '<h2>已選服務' + (cp ? '｜' + esc(cp.name) : '') + '</h2><div class="card">';
-    h += state.codes.map(c => '<div class="pkg" style="cursor:default;padding:4px 0"><span>' + esc(svc(c).name) + '<small>約 ' + svc(c).min + ' 分鐘</small></span>' + (pk ? '' : '<span class="price">' + fmt(priceOf(c, state.date)) + '</span>') + '</div>').join('');
+    h += state.codes.map(c => '<div class="pkg" style="cursor:default;padding:4px 0"><span>' + esc(nm(svc(c))) + '<small>約 ' + svc(c).min + ' 分鐘' + subHtml(svc(c)) + '</small></span>' + (pk ? '' : '<span class="price">' + fmt(priceOf(c, state.date)) + '</span>') + '</div>').join('');
     if (pk) h += '<div class="pkg" style="cursor:default;padding:4px 0;border-top:1px solid var(--line)"><span><b>組合價</b></span><span class="price">$' + pk.price.toLocaleString() + (pk.from ? ' 起' : '') + '</span></div>';
     h += '</div>';
     if (askHair()) h += '<h2>髮長（必選' + (needHair() && !pk ? '，依髮長收費' : '') + '）</h2>' + (hairApplies() && (C.settings.hairMid || C.settings.hairLong) ? '<p class="note">ⓘ 中長髮服務時間較長，系統會自動多留一點時間</p>' : '') + '<div class="seg">' + ['短', '中', '長'].map(x => '<button class="btn' + (hairNow() === x ? ' on' : '') + '" data-hair="' + x + '">' + HAIR_TXT[x] + '</button>').join('') + '</div>';
