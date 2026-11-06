@@ -82,6 +82,7 @@ header .logo{width:58px;height:58px;border-radius:50%;background:#fff;padding:3p
 .cal .dd.sel{background:var(--p);color:#fff}.cal .dd.sel small{color:#fff}
 .cal .dd.off{background:#f2f2f2;color:#bbb;text-decoration:line-through}
 .cal .dd.na{color:#d6d6d6;cursor:default}
+.cal .dd.off.selx{box-shadow:0 0 0 2px #bbb inset}
 .calkey{font-size:12px;color:var(--muted);margin:-2px 0 8px}.calkey i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin:0 3px 0 8px}
 </style>
 </head>
@@ -283,7 +284,7 @@ function evtFor(code) {
 function evtAsk(e) {
   const mo = Number(e.month.slice(5));
   return askBox('<b style="font-size:17px">🎉 本月活動更划算</b><p>「' + esc(e.name) + '」<b>$' + e.price.toLocaleString() + '</b>（不分髮長、含洗髮，限 ' + mo + ' 月服務），和「四劑式結構護髮 小時光」是同一款護髮。</p>' +
-    (hairNote('TR_4') ? '<p class="muted">四劑式結構護髮：' + esc(hairNote('TR_4').replace('依髮長：', '依髮長 ')) + '</p>' : '') + '<p class="muted">要約 ' + mo + ' 月以後的日期，請選「維持四劑式護髮」。</p>',
+    (hairNote('TR_4') ? '<p class="muted">四劑式結構護髮：' + esc(hairNote('TR_4').replace('依髮長：', '依髮長 ')) + '</p>' : '') + '<p class="muted">要約 ' + (mo % 12 + 1) + ' 月（含）以後的日期，請選「維持四劑式護髮」。</p>',
     '改選活動 $' + e.price.toLocaleString(), '維持四劑式護髮');
 }
 function toEvt(codes, e) {   // 換成活動：剪髮、修瀏海改成活動的加購，染燙保留，洗髮／護髮拿掉
@@ -487,7 +488,7 @@ function calHtml(em) {
       const s = y + '-' + p2(m) + '-' + p2(d);
       if (s < C.today || s > last) { h += '<div class="dd na">' + d + '</div>'; continue; }
       const off = C.avail && C.avail.days && C.avail.days[s] && C.avail.days[s].closed, evOff = !!em && s.slice(0, 7) !== em;
-      h += '<div class="dd ' + (state.date === s ? 'sel' : (off || evOff ? 'off' : 'ok')) + (evOff ? ' evoff' : '') + '" data-d="' + s + '">' + d + (s === C.today ? '<small>今天</small>' : '') + '</div>';
+      h += '<div class="dd ' + (off || evOff ? 'off' + (state.date === s ? ' selx' : '') : (state.date === s ? 'sel' : 'ok')) + (evOff ? ' evoff' : '') + '" data-d="' + s + '">' + d + (s === C.today ? '<small>今天</small>' : '') + '</div>';
     }
     h += '</div></div>';
     if (++m > 12) { m = 1; y++; }
