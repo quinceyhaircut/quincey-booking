@@ -231,7 +231,8 @@ function splitName(n) { const m = String(n || '').match(/^(.*?)（([^（）]+)�
 const nm = s => splitName(s.name)[0];
 const subHtml = s => splitName(s.name)[1] ? '<br>' + esc(splitName(s.name)[1]) : '';
 const label = s => SHORT[s.code] || nm(s);
-const ADD_ICON = { BROW: '🔥', QTR: '👑', EXFO: '⭐' };   // 熱門加購圖示
+const ADD_ICON = { BROW: '🔥' };   // 熱門加購圖示
+const ADD_TAG = { EXFO: '店家推薦', QTR: '最多女性顧客加購' };   // 加購標語（顯示在時間前）
 function cats() {
   const out = [];
   C.services.filter(s => !s.hidden).forEach(s => { let g = out.find(x => x.cat === s.cat); if (!g) out.push(g = { cat: s.cat, list: [] }); g.list.push(s); });
@@ -358,7 +359,7 @@ function renderTime() {
       h += '<h2>加購（選填）</h2>';
       al.forEach(a => {
         const on = state.addons.includes(a.code);
-        h += '<label class="card svc' + (on ? ' sel' : '') + '"><input type="checkbox" data-add="' + a.code + '"' + (on ? ' checked' : '') + '><span class="t">' + (ADD_ICON[a.code] ? '<span class="hot">' + ADD_ICON[a.code] + '</span>' : '') + esc(a.name) + '<small>' + (a.min ? '+約 ' + a.min + ' 分鐘' : '') + '</small></span><span class="price">+$' + addPrice(a.code, state.date).toLocaleString() + '</span></label>';
+        h += '<label class="card svc' + (on ? ' sel' : '') + '"><input type="checkbox" data-add="' + a.code + '"' + (on ? ' checked' : '') + '><span class="t">' + (ADD_ICON[a.code] ? '<span class="hot">' + ADD_ICON[a.code] + '</span>' : '') + esc(a.name) + '<small>' + (ADD_TAG[a.code] ? '<span class="tag" style="margin:0 6px 0 0">' + ADD_TAG[a.code] + '</span>' : '') + (a.min ? '+約 ' + a.min + ' 分鐘' : '') + '</small></span><span class="price">+$' + addPrice(a.code, state.date).toLocaleString() + '</span></label>';
       });
     }
     // 可搭配的整項服務（每個類別擇一，照原價）
