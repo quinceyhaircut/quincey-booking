@@ -95,7 +95,7 @@ header .logo{width:58px;height:58px;border-radius:50%;background:#fff;padding:3p
 <script>
 const LIFF_ID = '2012366833-i1UEQInD';
 const API = 'https://script.google.com/macros/s/AKfycbx3MClXu-KSg9ygjtWzXZTYG23vYzqhtm-cEZQHYl2usahTFYYLM9HDfZ24pyqLkWYIjQ/exec';
-let C = null, idToken = '', state = { codes: [], addons: [], date: '', time: '', quote: null, step: 'pick', notes: [], resched: null, proxy: false, people: 1, note: '', open: [] };
+let C = null, idToken = '', state = { codes: [], addons: [], date: '', time: '', quote: null, step: 'pick', notes: [], resched: null, proxy: null, people: 1, note: '', open: [] };
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -535,12 +535,13 @@ function toISODate(b) {
   return '';
 }
 function renderForm() {
+  if (state.proxy == null) state.proxy = !!C.isOwner;   // v4.8 店長預設代客預約（幫自己約再取消勾選）
   const px = state.proxy;
   const c = px ? {} : C.customer, f = state.form || {};
   const v = k => esc(f[k] != null ? f[k] : (c[k] || ''));
   const hair = f.hair != null ? f.hair : (c.hair || '');
   let h = '<button class="btn" id="back">← 改時間</button><h2>填寫資料</h2>';
-  if (C.isOwner) h += '<label class="switch"><input type="checkbox" id="proxy"' + (px ? ' checked' : '') + '><span><b>代客預約（電話）</b><br><small class="muted">幫打電話來的客人預約；客人用 LINE 預約過的話，系統會用 LINE 通知他</small></span></label>';
+  if (C.isOwner) h += '<label class="switch"><input type="checkbox" id="proxy"' + (px ? ' checked' : '') + '><span><b>代客預約（電話）</b><br><small class="muted">預設打勾＝幫客人預約；幫自己預約請取消勾選。客人用 LINE 預約過的話，系統會用 LINE 通知他</small></span></label>';
   h += '<div class="card">';
   h += '<label>' + (px ? '客人姓名' : '姓名（幫家人預約請填被服務者）') + '</label><input type="text" id="name" value="' + v('name') + '">';
   h += '<label>' + (px ? '客人手機' : '手機') + '</label><input type="tel" id="phone" inputmode="numeric" maxlength="12" placeholder="09xxxxxxxx" value="' + v('phone') + '">';
@@ -639,7 +640,7 @@ function renderDone(b) {
   $('#bar').classList.add('hide');
   const pending = b.status === '待確認';
   const title = b.rescheduled ? '改期成功' : b.proxy ? '已代客預約' : (pending ? '已送出，待店家確認' : '預約成功');
-  state.resched = null; state.proxy = false; state.people = 1; state.note = '';
+  state.resched = null; state.proxy = null; state.people = 1; state.note = '';
   const gcal = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent('昆希剪髮預約') +
     '&dates=' + b.date.replace(/-/g, '') + 'T' + b.time.replace(':', '') + '00/' + b.date.replace(/-/g, '') + 'T' + b.end.replace(':', '') + '00&ctz=Asia/Taipei&details=' + encodeURIComponent(b.items.join('、') + '\n編號 ' + b.id);
   $('#app').innerHTML = '<div class="done"><div class="big">' + (pending ? '⏳' : '✅') + '</div><h2>' + title + '</h2>' +
