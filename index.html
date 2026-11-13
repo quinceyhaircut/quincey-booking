@@ -471,12 +471,12 @@ function renderPick() {
   const recs = [];
   C.packages.filter(pkgShown).forEach(p => {
     const pr = pkgPrice(p);
-    recs.push('<div class="rc' + (same(p.codes, state.codes) && same(p.addons, state.addons) ? ' sel' : '') + '" data-pkg="' + C.packages.indexOf(p) + '"><b>⭐ ' + esc(p.name) + '</b><small>' + esc(p.codes.map(c => label(svc(c))).concat(p.addons.map(a => add(a).name)).join('＋')) + '</small><span class="price">$' + pr.price.toLocaleString() + (pr.from ? ' 起' : '') + '</span></div>');
+    recs.push('<div class="rc' + (same(p.codes, state.codes) && same(p.addons, state.addons) ? ' sel' : '') + '" data-pkg="' + C.packages.indexOf(p) + '"><b>' + esc(p.name) + '</b><small>' + esc(p.codes.map(c => label(svc(c))).concat(p.addons.map(a => add(a).name)).join('＋')) + '</small><span class="price">$' + pr.price.toLocaleString() + (pr.from ? ' 起' : '') + '</span></div>');
   });
   (C.events || []).filter(e => e.month >= C.today.slice(0, 7) && e.month <= lastOpen().slice(0, 7) && svc(e.code)).forEach(e => {
-    recs.push('<div class="rc' + (state.codes.includes(e.code) ? ' sel' : '') + '" data-evt="' + e.code + '"><b>⭐ ' + esc(e.name) + '</b><small>' + evtTag(e.code) + '限 ' + Number(e.month.slice(5)) + ' 月服務</small><span class="price">$' + e.price.toLocaleString() + '</span></div>');
+    recs.push('<div class="rc' + (state.codes.includes(e.code) ? ' sel' : '') + '" data-evt="' + e.code + '"><b>' + esc(e.name) + '</b><small>' + evtTag(e.code) + '限 ' + Number(e.month.slice(5)) + ' 月服務</small><span class="price">$' + e.price.toLocaleString() + '</span></div>');
   });
-  if (recs.length) h += '<h2>⭐ 推薦</h2><div class="rec">' + recs.join('') + '</div>';
+  if (recs.length) h += '<h2>推薦</h2><div class="rec">' + recs.join('') + '</div>';
   // 自選服務
   h += '<h2>自選服務</h2><p class="muted" style="margin:-6px 0 8px">點下面的項目選擇，<b>可以跨項目複選</b>（例如剪髮＋染髮），選好按最下方「下一步」</p><div class="tiles">';
   const hasMain = state.codes.length > 0, perm = state.codes.some(isPerm);
@@ -648,9 +648,8 @@ function renderForm() {
   if (C.isOwner) h += '<label class="switch"><input type="checkbox" id="proxy"' + (px ? ' checked' : '') + '><span><b>代客預約（電話）</b><br><small class="muted">預設打勾＝幫客人預約；幫自己預約請取消勾選。客人用 LINE 預約過的話，系統會用 LINE 通知他</small></span></label>';
   h += '<div class="card">';
   const R = px ? '' : ' <span class="req">＊</span>';   // 客人必填紅字；店長代約都不必填
-  if (px) h += '<p class="muted" style="margin:0">代客預約：姓名以外都可以留白；國外電話請加國碼，例如 +65 8818 0774</p>';
   h += '<label>' + (px ? '客人姓名' : '姓名（幫家人預約請填被服務者）') + ' <span class="req">＊</span></label><input type="text" id="name" value="' + v('name') + '">';
-  h += '<label>' + (px ? '客人電話' : '手機') + R + '</label><input type="tel" id="phone" inputmode="' + (px ? 'tel' : 'numeric') + '" maxlength="' + (px ? 20 : 12) + '" placeholder="' + (px ? '09xxxxxxxx 或 +65…' : '09xxxxxxxx') + '" value="' + v('phone') + '">';
+  h += '<label>' + (px ? '客人電話' : '手機') + R + '</label><input type="tel" id="phone" inputmode="' + (px ? 'tel' : 'numeric') + '" maxlength="' + (px ? 20 : 12) + '" placeholder="' + (px ? '09xxxxxxxx 或 +86…' : '09xxxxxxxx') + '" value="' + v('phone') + '">';
   h += '<label>生日（年/月/日）' + R + '</label><input type="date" id="birthday" min="1920-01-01" max="' + C.today + '" value="' + esc(toISODate(f.birthday != null ? f.birthday : (c.birthday || ''))) + '">';
   if (px || !c.returning) h += '<label>是否來過昆希剪髮？' + R + '</label><div class="seg"><button class="btn' + (f.isNew === false ? ' on' : '') + '" data-new="0">來過</button><button class="btn' + (f.isNew === true ? ' on' : '') + '" data-new="1">第一次</button></div>';
   if (state.codes.includes('HOME')) h += '<label>到府地址</label><input type="text" id="address" value="' + esc(f.address || '') + '">';
