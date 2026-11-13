@@ -114,6 +114,21 @@ main{padding-bottom:150px}
 main{padding-bottom:190px}
 #app>h2{font-size:20px;margin:36px 0 12px}
 .tile b{line-height:1.3}
+/* v5.3 底部列：實心品牌紫、白字；下一步白底深紫字 */
+.bar{background:#7B5EA7;border-top:0;box-shadow:0 -6px 20px rgba(60,40,90,.25)}
+.bar .sum,.bar .sum b,.bar .sum small{color:#fff}
+.bar .btn,.bar .btn.primary{background:#fff;color:#4B3474;border-color:#fff;box-shadow:0 4px 12px rgba(30,15,60,.25)}
+/* v5.3 今日清單（店長） */
+.td-head{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
+.td-head .big{font-size:20px;font-weight:700;color:var(--p)}
+.td-row{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px}
+.td-row.todo{background:#fff8d6;border-color:#f0d878}
+.td-row .top{display:flex;justify-content:space-between;gap:8px}
+.td-row small{display:block;color:var(--muted);font-size:13px}
+.td-row .seg{margin-top:10px}
+.td-row .btn.ok.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.td-row .btn.ns.on{background:#c0392b;border-color:#c0392b;color:#fff}
+.td-row .btn.ok{border-color:var(--ok);color:var(--ok)}.td-row .btn.ns{border-color:#c0392b;color:#c0392b}
 </style>
 </head>
 <body>
@@ -138,7 +153,7 @@ function tokenStale() { try { const m = atob(idToken.split('.')[1].replace(/-/g,
 function relogin() {   // 30 秒內只重試一次，避免無限重整
   try { if (+sessionStorage.getItem('rl') > Date.now() - 30000) return false; sessionStorage.setItem('rl', Date.now()); } catch (e) {}
   if (liff.isInClient()) { location.reload(); return true; }
-  try { liff.logout(); } catch (e) {} liff.login({ redirectUri: location.origin + location.pathname }); return true;
+  try { liff.logout(); } catch (e) {} liff.login({ redirectUri: location.origin + location.pathname + (isTodayPage() ? '?page=today' : '') }); return true;
 }
 async function api(action, data) {
   if (idToken && tokenStale() && relogin()) throw new Error('登入已過期，正在重新登入…');
@@ -242,7 +257,7 @@ function fmt(p) { return '$' + p.price.toLocaleString() + (p.from ? ' 起' : '')
 
 /* 畫面：選服務（v5 重做：快選＋推薦／6 大項方塊／跨大項複選） */
 const SHORT = { BANG: '修瀏海', CUT: '單剪髮', CUT_RINSE: '剪髮（沖洗一次）', WCB: '洗剪吹', WCB_NR: '洗剪吹', KID_CUT: '單剪髮', KID_RINSE: '剪髮（沖洗一次）', KID_WCB: '洗剪吹' };
-const SUBS = ['剪＋洗兩次＋吹整', '剪＋洗二次＋吹整', '含洗髮及吹整', '洗髮＋剪髮＋吹整', '不洗', '沖洗一次・自助吹乾', '含一般洗髮'];
+const SUBS = ['剪＋洗兩次＋吹整', '剪＋洗二次＋吹整', '含洗髮及吹整', '洗髮＋剪髮＋吹整', '不洗', '沖洗一次・自助吹乾', '含一般洗髮', '含一般洗髮和吹整'];
 function splitName(n) { const m = String(n || '').match(/^(.*?)（([^（）]+)）$/); return m && SUBS.includes(m[2]) ? [m[1], m[2].replace('兩次', '二次')] : [String(n || ''), '']; }
 const nm = s => splitName(s.name)[0];
 const subHtml = s => splitName(s.name)[1] ? '<br>' + esc(splitName(s.name)[1]) : '';
@@ -257,6 +272,9 @@ const isPerm = c => /^PERM/.test(c);
 const isDye = c => !!svc(c) && svc(c).cat === '染髮';
 const isCutCat = c => !!svc(c) && svc(c).cat === '剪髮';
 const isChem = c => isDye(c) || isPerm(c);
+/* v5.3 一般洗髮（WASH_N）遇到護髮（類別＝護髮，頭皮護理除外）或每月活動：金額、時間都不算（與後端相同） */
+const isHairTR = c => !!svc(c) && svc(c).cat === '護髮' && !/頭皮/.test(svc(c).name);
+function washFree(codes) { codes = codes || state.codes; return codes.includes('WASH_N') ? (codes.some(c => evt(c)) ? '活動已含' : codes.some(isHairTR) ? '護髮已含' : '') : ''; }
 function tiles() { const t = (C.settings && C.settings.tiles) || ['剪髮', '洗髮', '護髮', '染髮', '燙髮', '加購']; return t.filter(x => x === '加購' || catList(x).length); }
 function catList(cat) { return C.services.filter(s => !s.hidden && s.cat === cat); }
 /* 可加購：所選服務各自允許的加購聯集；染燙才有頭皮隔離／染燙前後保養、染燙不出現頭皮去角質；選了護髮就不能加購瞬間護髮 */
@@ -273,7 +291,7 @@ function normalize() {
   if (c.some(isPerm) && c.some(isCutCat)) { c = c.filter(x => !isCutCat(x)); notes.push('燙髮已含剪髮，已取消剪髮類項目'); }
   const hw = c.some(x => W.includes(x)), hr = c.includes('CUT_RINSE');
   if ((hw || hr) && c.some(x => isTR(x) || isDye(x) || x.startsWith('WASH_'))) {
-    const why = c.some(isTR) ? '護髮已含洗髮及吹整' : c.some(isDye) ? '染髮已含洗髮及吹整' : '已選洗髮服務';
+    const why = c.some(isTR) ? '護髮已含一般洗髮和吹整' : c.some(isDye) ? '染髮已含洗髮及吹整' : '已選洗髮服務';
     c = c.filter(x => !W.includes(x) && x !== 'CUT_RINSE'); if (!c.includes('CUT')) c.unshift('CUT');
     notes.push((hw ? '洗剪吹' : '剪髮（沖洗一次）') + '已改為剪髮價（' + why + '）');
   }
@@ -299,7 +317,8 @@ function pkgPrice(p) {
 }
 function total() {
   let t = 0, m = 0, from = false;
-  state.codes.forEach(c => { const p = priceOf(c, state.date); t += p.price; from = from || p.from; m += svc(c).min; });
+  const wf = washFree();
+  state.codes.forEach(c => { if (wf && c === 'WASH_N') return; const p = priceOf(c, state.date); t += p.price; from = from || p.from; m += svc(c).min; });
   let at = 0;
   state.addons.forEach(a => { at += addPrice(a, state.date); m += add(a).min; });
   const pk = pkgOver(state.codes, state.addons, state.date);
@@ -310,8 +329,8 @@ function total() {
 }
 /* 重複防呆：回傳提醒文字，沒重複就回傳空字串 */
 function conflict(codes) {
-  const ev = codes.find(c => evt(c)), ew = codes.find(c => /^(TR_|WASH_|WCB|CUT_RINSE|HOME)/.test(c));
-  if (ev && ew) return '「' + evt(ev).name + '」已含洗髮及護髮，不能再選「' + label(svc(ew)) + '」。要剪髮請選「單剪髮」。';
+  const ev = codes.find(c => evt(c)), ew = codes.find(c => c !== 'WASH_N' && /^(TR_|WASH_|WCB|CUT_RINSE|HOME)/.test(c));
+  if (ev && ew) return '「' + evt(ev).name + '」已含一般洗髮及護髮，不能再選「' + label(svc(ew)) + '」。要剪髮請選「單剪髮」。';
   return '';
 }
 /* 本月有「小時光」活動時，選四劑式護髮先提醒活動價 */
@@ -321,7 +340,7 @@ function evtFor(code) {
 }
 function evtAsk(e) {
   const mo = Number(e.month.slice(5));
-  return askBox('<b style="font-size:17px">🎉 本月活動更划算</b><p>「' + esc(e.name) + '」<b>$' + e.price.toLocaleString() + '</b>（不分髮長、含洗髮，限 ' + mo + ' 月服務），和「四劑式結構護髮 小時光」是同一款護髮。</p>' +
+  return askBox('<b style="font-size:17px">🎉 本月活動更划算</b><p>「' + esc(e.name) + '」<b>$' + e.price.toLocaleString() + '</b>（不分髮長、含一般洗髮，限 ' + mo + ' 月服務），和「四劑式結構護髮 小時光」是同一款護髮。</p>' +
     (hairNote('TR_4') ? '<p class="muted">四劑式結構護髮：' + esc(hairNote('TR_4').replace('依髮長：', '依髮長 ')) + '</p>' : '') + '<p class="muted">要約 ' + (mo % 12 + 1) + ' 月（含）以後的日期，請選「維持四劑式護髮」。</p>',
     '改選活動 $' + e.price.toLocaleString(), '維持四劑式護髮');
 }
@@ -373,10 +392,11 @@ async function pickSvc(c) {
     if (!(await askBox('<b style="font-size:17px">💡 推薦「剪髮＋頭皮護理」組合</b><p>洗剪吹和頭皮清潔護理洗都會洗頭。改選<b>剪髮＋頭皮清潔護理洗</b>組合 <b>$' + pr.price.toLocaleString() + '</b>，洗剪吹改為剪髮價，一樣有洗髮和吹整。</p>', '改選組合 $' + pr.price.toLocaleString(), '不要頭皮清潔護理洗'))) return false;
     combo = true;
   }
-  const before = state.notes.slice();
+  const before = state.notes.slice(), wf0 = washFree();
   state.codes = next; normalize();
-  const nn = state.notes.find(n => !before.includes(n));
+  const nn = state.notes.find(n => !before.includes(n)), wf1 = washFree();
   if (nn && !combo) await infoBox('ⓘ 價格說明', esc(nn));
+  else if (wf1 && !wf0) await infoBox('ⓘ 價格說明', wf1 === '活動已含' ? '一般洗髮已含在活動內，不另收費' : '一般洗髮已含在護髮內，不另收費');
   return true;
 }
 function unpick(c) {
@@ -394,7 +414,7 @@ function openCat(cat, only) {
   const optHtml = (s, dis, why, attr) => {
     const on = picked(s.code);
     return '<div class="opt' + (on ? ' sel' : '') + (dis ? ' dis' : '') + '" ' + attr + '="' + s.code + '"><span class="dot"></span><span class="t">' + esc(label(s)) + evtTag(s.code) +
-      (s.confirm ? '<span class="tag">需店家確認</span>' : '') + '<small>約 ' + s.min + ' 分鐘' + subHtml(s) + (s.note && !hairNote(s.code) ? '｜' + esc(s.note) : '') + (hairNote(s.code) ? '<br>' + esc(hairNote(s.code)) : '') + (dis && why ? '<br>' + esc(why) : '') + '</small></span><span class="price">' + fmt(priceOf(s.code)) + '</span></div>';
+      (s.confirm ? '<span class="tag">需店家確認</span>' : '') + '<small>約 ' + s.min + ' 分鐘' + subHtml(s) + (s.note && !hairNote(s.code) ? '｜' + esc(s.note) : '') + (hairNote(s.code) ? '<br>' + esc(hairNote(s.code)) : '') + (dis && why ? '<br>' + esc(why) : '') + '</small></span><span class="price">' + (s.code === 'WASH_N' && washFree(state.codes.concat('WASH_N')) ? '$0（' + washFree(state.codes.concat('WASH_N')) + '）' : fmt(priceOf(s.code))) + '</span></div>';
   };
   const addHtml = () => {
     const ok = allowedAdds(), tr = state.codes.some(isTR);
@@ -550,7 +570,7 @@ function renderTime() {
     const pk = pkgOver(state.codes, state.addons, state.date), cp = curPkg();
     h = '<div class="seg"><button class="btn" id="back">← 改服務／再加服務</button><button class="btn" id="clr" style="flex:0 0 auto;border-color:var(--line);color:var(--muted)">✕ 全部清除重選</button></div>';
     h += '<h2>已選服務' + (cp ? '｜' + esc(cp.name) : '') + '</h2><div class="card">';
-    h += state.codes.map(c => '<div class="pkg" style="cursor:default;padding:4px 0"><span>' + esc(nm(svc(c))) + '<small>' + evtTag(c) + '約 ' + svc(c).min + ' 分鐘' + subHtml(svc(c)) + '</small></span>' + (pk ? '' : '<span class="price">' + fmt(priceOf(c, state.date)) + '</span>') + '</div>').join('');
+    h += state.codes.map(c => '<div class="pkg" style="cursor:default;padding:4px 0"><span>' + esc(nm(svc(c))) + '<small>' + evtTag(c) + '約 ' + svc(c).min + ' 分鐘' + subHtml(svc(c)) + '</small></span>' + (pk ? '' : '<span class="price">' + (c === 'WASH_N' && washFree() ? '$0（' + washFree() + '）' : fmt(priceOf(c, state.date))) + '</span>') + '</div>').join('');
     h += state.addons.map(a => '<div class="pkg" style="cursor:default;padding:4px 0"><span>加購 ' + esc(add(a).name) + '<small>+約 ' + add(a).min + ' 分鐘</small></span>' + (pk && pk.p.addons.includes(a) ? '' : '<span class="price">+$' + addPrice(a, state.date).toLocaleString() + '</span>') + '</div>').join('');
     if (pk) h += '<div class="pkg" style="cursor:default;padding:4px 0;border-top:1px solid var(--line)"><span><b>組合價</b></span><span class="price">$' + pk.price.toLocaleString() + (pk.from ? ' 起' : '') + '</span></div>';
     h += '</div>';
@@ -824,12 +844,48 @@ function chooser(r) {
   };
 }
 
+/* v5.3 今日清單（只有店長看得到；後端用 LINE 身分驗證） */
+const WK = '日一二三四五六';
+function isTodayPage() { const q = new URLSearchParams(location.search); return q.get('page') === 'today' || /page=today/.test(q.get('liff.state') || ''); }
+let TD = null;
+async function renderToday() {
+  $('#bar').classList.add('hide');
+  document.title = '今日清單｜昆希剪髮';
+  try { TD = await api('today'); } catch (e) { $('#app').innerHTML = ''; showErr(e); return; }
+  drawToday();
+}
+function drawToday() {
+  const L = TD.list, done = L.filter(r => r.result).length;
+  const rev = L.filter(r => r.result !== '爽約').reduce((s, r) => s + (r.total || 0), 0);
+  const d = new Date(TD.date + 'T00:00:00+08:00');
+  let h = '<div class="td-head"><b>今天的客人 ' + (d.getUTCMonth() + 1) + '/' + d.getUTCDate() + '（' + WK[new Date(TD.date + 'T12:00:00Z').getUTCDay()] + '）</b>' +
+    '<div class="big">已處理 ' + done + '／' + L.length + '</div>今日業績（扣掉爽約）<b>$' + rev.toLocaleString() + '</b>' +
+    '<p class="muted" style="margin:6px 0 0;font-size:13px">沒按的，23:59 自動記為完成，只有爽約要處理。已標記的再點一次可以改回來。</p></div>';
+  if (!L.length) h += '<p class="muted">今天沒有預約</p>';
+  h += L.map(r => '<div class="td-row' + (r.result ? '' : ' todo') + '"><div class="top"><span><b>' + esc(r.time + '–' + r.end) + '</b> ' + esc(r.name) + (r.proxy ? ' ☎️' : '') +
+    '<small>' + esc(r.items) + '</small></span><span class="price">$' + (r.total || 0).toLocaleString() + '</span></div>' +
+    '<div class="seg"><button class="btn ok' + (r.result === '完成' ? ' on' : '') + '" data-mk="' + esc(r.id) + '" data-r="完成">✅ 完成</button>' +
+    '<button class="btn ns' + (r.result === '爽約' ? ' on' : '') + '" data-mk="' + esc(r.id) + '" data-r="爽約">❌ 爽約</button></div></div>').join('');
+  h += '<button class="btn" id="td-re" style="width:100%;margin-top:8px">↻ 重新整理</button>';
+  $('#app').innerHTML = h;
+  $('#td-re').onclick = () => { $('#app').innerHTML = '<p class="muted">載入中…</p>'; renderToday(); };
+  document.querySelectorAll('[data-mk]').forEach(b => b.onclick = async () => {
+    const r = TD.list.find(x => x.id === b.dataset.mk), old = r.result;
+    const want = old === b.dataset.r ? '' : b.dataset.r;   // 點已標記的＝改回未處理
+    if (want === '爽約' && !(await askBox('<b>確定記為爽約？</b><br><small class="muted">' + esc(r.time + ' ' + r.name + '｜' + r.items) + '</small><p class="note">會接到原本的爽約三階段處理</p>', '記為爽約', '返回'))) return;
+    r.result = want; drawToday();
+    try { const o = await api('mark', { id: r.id, result: want }); if (o.row) Object.assign(r, o.row); drawToday(); }
+    catch (e) { r.result = old; drawToday(); showErr(e); }
+  });
+}
+
 (async function init() {
   try {
     await liff.init({ liffId: LIFF_ID });
     if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
     idToken = liff.getIDToken();
     if (tokenStale() && relogin()) return;   // 登入憑證 1 小時過期：自動重新登入
+    if (isTodayPage()) { await renderToday(); return; }   // v5.3 店長今日清單
     mineData().catch(() => {});   // 預約清單和主資料同時抓
     // 先用上次存的服務與價目畫出畫面，背景同時抓最新資料
     let cached = null;
