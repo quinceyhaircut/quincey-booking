@@ -129,6 +129,15 @@ main{padding-bottom:190px}
 .td-row .btn.ok.on{background:var(--ok);border-color:var(--ok);color:#fff}
 .td-row .btn.ns.on{background:#c0392b;border-color:#c0392b;color:#fff}
 .td-row .btn.ok{border-color:var(--ok);color:var(--ok)}.td-row .btn.ns{border-color:#c0392b;color:#c0392b}
+/* v5.4 結帳＋現場客 */
+.td-row .seg .btn.ck{flex:0 0 auto;padding:10px 12px}
+.td-row.walk{background:#f3f8ff;border-color:#c9dcf3}
+.tag.wk{background:#e3eefc;color:#2f5f9e;margin:0}
+.td-row small.pd{color:var(--p);margin-top:2px}
+.ck-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.ck-chip{background:var(--p2);border-radius:16px;padding:5px 10px;font-size:14px}
+.ck-chip small{color:var(--p)}.ck-chip b{margin-left:6px;color:var(--muted);cursor:pointer;padding:0 2px}
+.toast{position:fixed;left:50%;top:16px;transform:translateX(-50%);background:#3b3446;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:20;max-width:90vw;box-shadow:0 4px 14px rgba(0,0,0,.25)}
 </style>
 </head>
 <body>
@@ -336,7 +345,7 @@ function conflict(codes) {
 /* 本月有「小時光」活動時，選四劑式護髮先提醒活動價 */
 function evtFor(code) {
   if (code !== 'TR_4' || !svc('TR_4') || !/小時光/.test(svc('TR_4').name)) return null;
-  return (C.events || []).find(e => /小時光/.test(e.name) && e.month >= C.today.slice(0, 7) && e.month <= lastOpen().slice(0, 7) && svc(e.code)) || null;
+  return (C.events || []).find(e => e.price > 0 && /小時光/.test(e.name) && e.month >= C.today.slice(0, 7) && e.month <= lastOpen().slice(0, 7) && svc(e.code)) || null;
 }
 function evtAsk(e) {
   const mo = Number(e.month.slice(5));
@@ -500,7 +509,7 @@ function renderPick() {
     recs.push('<div class="rc' + (same(p.codes, state.codes) && same(p.addons, state.addons) ? ' sel' : '') + '" data-pkg="' + C.packages.indexOf(p) + '"><b>' + esc(p.name) + '</b><small>' + esc(p.codes.map(c => label(svc(c))).concat(p.addons.map(a => add(a).name)).join('＋')) + '</small><span class="price">$' + pr.price.toLocaleString() + (pr.from ? ' 起' : '') + '</span></div>');
   });
   (C.events || []).filter(e => e.month >= C.today.slice(0, 7) && e.month <= lastOpen().slice(0, 7) && svc(e.code)).forEach(e => {
-    recs.push('<div class="rc' + (state.codes.includes(e.code) ? ' sel' : '') + '" data-evt="' + e.code + '"><b>' + esc(e.name) + '</b><small>' + evtTag(e.code) + '限 ' + Number(e.month.slice(5)) + ' 月服務</small><span class="price">$' + e.price.toLocaleString() + '</span></div>');
+    recs.push('<div class="rc' + (state.codes.includes(e.code) ? ' sel' : '') + '" data-evt="' + e.code + '"><b>' + esc(e.name) + '</b><small>' + evtTag(e.code) + '限 ' + Number(e.month.slice(5)) + ' 月服務</small><span class="price">' + (e.price > 0 ? '$' + e.price.toLocaleString() : fmt(priceOf(e.code, e.month + '-15', ''))) + '</span></div>');   // v5.4 活動價格 0＝照髮長價
   });
   if (recs.length) h += '<h2>推薦</h2><div class="rec">' + recs.join('') + '</div>';
   // 自選服務
@@ -851,24 +860,66 @@ let TD = null;
 async function renderToday() {
   $('#bar').classList.add('hide');
   document.title = '今日清單｜昆希剪髮';
-  try { TD = await api('today'); } catch (e) { $('#app').innerHTML = ''; showErr(e); return; }
+  try {
+    const [t, cfg] = await Promise.all([api('today'), C ? Promise.resolve(C) : api('config').catch(() => null)]);   // v5.4 結帳要用服務／價目
+    TD = t; if (cfg) C = cfg;
+  } catch (e) { $('#app').innerHTML = ''; showErr(e); return; }
   drawToday();
 }
+/* v5.4 結帳：價格計算（和預約頁同一套價目；一般洗髮遇護髮／活動不算） */
+function ckSum(codes, adds, hair, n) {
+  const d = TD.date, wf = washFree(codes);
+  let t = 0, from = false;
+  codes.forEach(c => { if (wf && c === 'WASH_N') return; const p = priceOf(c, d, hair || ''); t += p.price; from = from || p.from; });
+  let at = adds.reduce((s, a) => s + addPrice(a, d), 0);
+  const pk = pkgOver(codes, adds, d);
+  if (pk) { t = pk.price; from = pk.from; at = adds.filter(a => !pk.p.addons.includes(a)).reduce((s, a) => s + addPrice(a, d), 0); }
+  return { t: (t + at) * (n || 1), from };
+}
+const ckName = c => svc(c) ? label(svc(c)) : c;
+const ckAddName = a => add(a) ? add(a).name : a;
+/* 和原預約比：多做／少做了什麼 */
+function ckDiff(r) {
+  if (r.paid === null) return '';
+  const pc = r.paidCodes, pa = r.paidAdds, d = TD.date, hair = r.hair || '';
+  const plus = pc.filter(c => !r.codes.includes(c)).map(c => ckName(c) + ' +$' + priceOf(c, d, hair).price.toLocaleString())
+    .concat(pa.filter(a => !r.adds.includes(a)).map(a => ckAddName(a) + ' +$' + addPrice(a, d).toLocaleString()));
+  const minus = r.codes.filter(c => !pc.includes(c)).map(ckName).concat(r.adds.filter(a => !pa.includes(a)).map(ckAddName));
+  const out = [];
+  if (plus.length) out.push('現場加做：' + plus.join('、'));
+  if (minus.length && (pc.length || pa.length)) out.push('沒做：' + minus.join('、'));
+  if (r.payNote) out.push('備註：' + r.payNote);
+  return out.join('<br>');
+}
 function drawToday() {
-  const L = TD.list, done = L.filter(r => r.result).length;
+  const L = TD.list.slice().sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
+  const appt = L.filter(r => !r.walkin), done = appt.filter(r => r.result).length, walk = L.length - appt.length;
   const rev = L.filter(r => r.result !== '爽約').reduce((s, r) => s + (r.total || 0), 0);
   const d = new Date(TD.date + 'T00:00:00+08:00');
   let h = '<div class="td-head"><b>今天的客人 ' + (d.getUTCMonth() + 1) + '/' + d.getUTCDate() + '（' + WK[new Date(TD.date + 'T12:00:00Z').getUTCDay()] + '）</b>' +
-    '<div class="big">已處理 ' + done + '／' + L.length + '</div>今日業績（扣掉爽約）<b>$' + rev.toLocaleString() + '</b>' +
-    '<p class="muted" style="margin:6px 0 0;font-size:13px">沒按的，23:59 自動記為完成，只有爽約要處理。已標記的再點一次可以改回來。</p></div>';
+    '<div class="big">已處理 ' + done + '／' + appt.length + (walk ? '　<small style="font-size:14px">🚶 現場 ' + walk + ' 位</small>' : '') + '</div>今日實收合計（扣掉爽約）<b>$' + rev.toLocaleString() + '</b>' +
+    '<p class="muted" style="margin:6px 0 0;font-size:13px">沒按的，21:00 後自動記為完成，只有爽約要處理。已標記的再點一次可以改回來。</p></div>';
+  h += '<button class="btn primary" id="td-walk" style="width:100%;margin-bottom:10px">＋ 現場客</button>';
   if (!L.length) h += '<p class="muted">今天沒有預約</p>';
-  h += L.map(r => '<div class="td-row' + (r.result ? '' : ' todo') + '"><div class="top"><span><b>' + esc(r.time + '–' + r.end) + '</b> ' + esc(r.name) + (r.proxy ? ' ☎️' : '') +
-    '<small>' + esc(r.items) + '</small></span><span class="price">$' + (r.total || 0).toLocaleString() + '</span></div>' +
-    '<div class="seg"><button class="btn ok' + (r.result === '完成' ? ' on' : '') + '" data-mk="' + esc(r.id) + '" data-r="完成">✅ 完成</button>' +
-    '<button class="btn ns' + (r.result === '爽約' ? ' on' : '') + '" data-mk="' + esc(r.id) + '" data-r="爽約">❌ 爽約</button></div></div>').join('');
+  h += L.map(r => {
+    const changed = r.paid !== null && (r.paid !== r.est || ckDiff(r));
+    const price = r.walkin ? '$' + (r.total || 0).toLocaleString()
+      : changed ? '<small style="display:inline;text-decoration:line-through">$' + r.est.toLocaleString() + '</small> → $' + (r.paid || 0).toLocaleString() : '$' + (r.total || 0).toLocaleString();
+    const items = r.walkin ? (r.paidCodes.map(ckName).concat(r.paidAdds.map(a => '加購' + ckAddName(a))).join('、') || r.items) : r.items;
+    const diff = r.walkin ? (r.payNote ? '備註：' + esc(r.payNote) : '') : esc(ckDiff(r)).replace(/&lt;br&gt;/g, '<br>');
+    return '<div class="td-row' + (r.result || r.walkin ? '' : ' todo') + (r.walkin ? ' walk' : '') + '"><div class="top"><span><b>' + esc(r.time + '–' + r.end) + '</b> ' +
+      (r.walkin ? '<span class="tag wk">🚶 現場</span> ' : '') + esc(r.name) + (r.proxy && !r.walkin ? ' ☎️' : '') +
+      '<small>' + esc(items) + '</small>' + (diff ? '<small class="pd">' + diff + '</small>' : '') + '</span><span class="price">' + price + '</span></div>' +
+      (r.walkin ? '<div class="seg"><button class="btn ck" data-ck="' + esc(r.id) + '">✏️ 結帳</button></div>'
+        : '<div class="seg"><button class="btn ok' + (r.result === '完成' ? ' on' : '') + '" data-mk="' + esc(r.id) + '" data-r="完成">✅ 完成</button>' +
+          '<button class="btn ns' + (r.result === '爽約' ? ' on' : '') + '" data-mk="' + esc(r.id) + '" data-r="爽約">❌ 爽約</button>' +
+          '<button class="btn ck" data-ck="' + esc(r.id) + '">✏️ 結帳</button></div>') + '</div>';
+  }).join('');
   h += '<button class="btn" id="td-re" style="width:100%;margin-top:8px">↻ 重新整理</button>';
   $('#app').innerHTML = h;
   $('#td-re').onclick = () => { $('#app').innerHTML = '<p class="muted">載入中…</p>'; renderToday(); };
+  $('#td-walk').onclick = () => ckOpen(null);
+  document.querySelectorAll('[data-ck]').forEach(b => b.onclick = () => ckOpen(TD.list.find(x => x.id === b.dataset.ck)));
   document.querySelectorAll('[data-mk]').forEach(b => b.onclick = async () => {
     const r = TD.list.find(x => x.id === b.dataset.mk), old = r.result;
     const want = old === b.dataset.r ? '' : b.dataset.r;   // 點已標記的＝改回未處理
@@ -878,6 +929,107 @@ function drawToday() {
     catch (e) { r.result = old; drawToday(); showErr(e); }
   });
 }
+/* v5.4 結帳／現場客 編輯視窗：r＝今日清單的一筆；null＝新增現場客 */
+function ckOpen(r) {
+  if (!C || !C.services) { showErr('價目還沒載入，請按「↻ 重新整理」再試'); return; }
+  const isNew = !r, walk = isNew || r.walkin;
+  const st = {
+    codes: r ? (r.paid !== null ? r.paidCodes : r.codes).slice() : [],
+    adds: r ? (r.paid !== null ? r.paidAdds : r.adds).slice() : [],
+    hair: r ? r.hair || '' : '', touched: !!(r && r.paid !== null), n: r ? r.people || 1 : 1
+  };
+  const ym = TD.date.slice(0, 7);
+  const svcs = C.services.filter(s => s.cat === '活動' ? !!(evt(s.code) && evt(s.code).month === ym) : !s.hidden);
+  const okAdds = new Set(); C.services.forEach(s => (s.addons || []).forEach(a => okAdds.add(a)));
+  const adds = C.addons.filter(a => okAdds.has(a.code));
+  const cats = []; svcs.forEach(s => { if (!cats.includes(s.cat)) cats.push(s.cat); });
+  const now = TD.now ? TD.now.slice(11, 16) : nowStr().slice(11, 16);
+  const nowR = (() => { const m = +now.slice(0, 2) * 60 + Math.floor(+now.slice(3, 5) / 5) * 5; return ('0' + Math.floor(m / 60)).slice(-2) + ':' + ('0' + m % 60).slice(-2); })();
+  const m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = '<div class="box sheet" id="ck-box"></div>';
+  document.body.appendChild(m);
+  const box = m.querySelector('#ck-box');
+  const close = () => m.remove();
+  m.onclick = e => { if (e.target === m) close(); };
+  const needH = () => st.codes.some(c => rowsAt(c, TD.date).some(x => x.hair));
+  const sum = () => ckSum(st.codes, st.adds, st.hair, st.n);
+  let form = { name: '', phone: '', time: nowR, note: r ? r.payNote : '', thanks: true, paid: r && r.paid !== null ? r.paid : null };
+  const keep = () => {   // 畫面重畫前先記住輸入中的內容
+    const g = id => box.querySelector('#' + id);
+    if (g('ck-name')) form.name = g('ck-name').value;
+    if (g('ck-phone')) form.phone = g('ck-phone').value;
+    if (g('ck-time')) form.time = g('ck-time').value;
+    if (g('ck-note')) form.note = g('ck-note').value;
+    if (g('ck-thx')) form.thanks = g('ck-thx').checked;
+    if (g('ck-paid')) form.paid = g('ck-paid').value === '' ? null : +g('ck-paid').value;
+  };
+  const draw = () => {
+    const s = sum();
+    if (!st.touched) form.paid = s.t;
+    let h = '<b style="font-size:17px">' + (isNew ? '＋ 現場客' : (walk ? '🚶 現場客 ' : '✏️ 結帳 ') + esc(r.name + '｜' + r.time)) + '</b>';
+    if (r && !walk) h += '<p class="muted" style="margin:6px 0">原預約：' + esc(r.items) + '　$' + r.est.toLocaleString() + '</p>';
+    if (isNew) {
+      h += '<label>姓名 <small class="muted">（可空白，記「散客」）</small></label><input type="text" id="ck-name" value="' + esc(form.name) + '">' +
+        '<label>電話 <small class="muted">（選填；有綁 LINE 的客人可以傳感謝卡）</small></label><input type="tel" id="ck-phone" value="' + esc(form.phone) + '">' +
+        '<label>開始時間</label><input type="time" id="ck-time" value="' + esc(form.time) + '" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font-size:16px">' +
+        '<p class="muted" style="font-size:12px;margin:4px 0 0">現在或稍後的時間會鎖住線上預約那一段；已經過去的時間（事後補登）不鎖</p>';
+    }
+    h += '<label>服務</label><div class="ck-chips">' + (st.codes.length || st.adds.length ? '' : '<span class="muted">還沒選</span>') +
+      st.codes.map(c => '<span class="ck-chip">' + esc(ckName(c)) + ' <small>$' + priceOf(c, TD.date, st.hair).price.toLocaleString() + '</small><b data-rmc="' + esc(c) + '">✕</b></span>').join('') +
+      st.adds.map(a => '<span class="ck-chip">加購' + esc(ckAddName(a)) + ' <small>$' + addPrice(a, TD.date).toLocaleString() + '</small><b data-rma="' + esc(a) + '">✕</b></span>').join('') + '</div>';
+    h += '<select id="ck-addsvc"><option value="">＋ 加服務</option>' + cats.map(cat => '<optgroup label="' + esc(cat) + '">' +
+      svcs.filter(x => x.cat === cat && !st.codes.includes(x.code)).map(x => '<option value="' + esc(x.code) + '">' + esc(label(x)) + '　' + esc(fmt(priceOf(x.code, TD.date, st.hair)).replace(' 起', '起')) + '</option>').join('') + '</optgroup>').join('') + '</select>';
+    h += '<select id="ck-addadd" style="margin-top:6px"><option value="">＋ 加購</option>' + adds.filter(a => !st.adds.includes(a.code)).map(a => '<option value="' + esc(a.code) + '">' + esc(a.name) + '　$' + addPrice(a.code, TD.date).toLocaleString() + '</option>').join('') + '</select>';
+    if (needH()) h += '<label>髮長</label><div class="seg">' + ['短', '中', '長'].map(x => '<button class="btn' + (st.hair === x ? ' on' : '') + '" data-ckh="' + x + '">' + x + '</button>').join('') + '</div>' + (st.hair ? '' : '<p class="note">沒選髮長先用最低價計算</p>');
+    h += '<p style="margin:12px 0 0">系統計算 <b class="price">$' + s.t.toLocaleString() + (s.from ? ' 起' : '') + '</b>' + (st.n > 1 ? '<small class="muted">（' + st.n + ' 人）</small>' : '') + '</p>';
+    h += '<label>實收金額 <small class="muted">（折扣、抹零可以直接改）</small></label><input type="tel" inputmode="numeric" id="ck-paid" value="' + (form.paid === null ? '' : form.paid) + '">' +
+      (st.touched && form.paid !== s.t ? '<p class="muted" style="font-size:12px;margin:4px 0 0">已手動改金額（系統計算 $' + s.t.toLocaleString() + '）<a href="#" id="ck-auto">改回系統計算</a></p>' : '');
+    h += '<label>備註 <small class="muted">（選填，例如：熟客抹零）</small></label><input type="text" id="ck-note" value="' + esc(form.note || '') + '">';
+    if (isNew) h += '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="ck-thx"' + (form.thanks ? ' checked' : '') + ' style="width:18px;height:18px;accent-color:var(--p)"> 傳感謝卡（電話有綁 LINE 才會傳）</label>';
+    h += '<button class="btn primary" id="ck-save">' + (isNew ? '登記現場客（記為已完成）' : '儲存實收') + '</button>';
+    if (r && r.paid !== null && !walk) h += '<button class="btn" id="ck-reset">清除結帳（回到原預約金額）</button>';
+    if (r && walk) h += '<button class="btn" id="ck-del" style="border-color:#c0392b;color:#c0392b">🗑 刪除這筆現場客（按錯時）</button>';
+    h += '<button class="btn" id="ck-no" style="border-color:var(--line);color:var(--muted)">取消</button>';
+    box.innerHTML = h;
+    const q = id => box.querySelector('#' + id);
+    box.querySelectorAll('[data-rmc]').forEach(b => b.onclick = () => { keep(); st.codes = st.codes.filter(c => c !== b.dataset.rmc); draw(); });
+    box.querySelectorAll('[data-rma]').forEach(b => b.onclick = () => { keep(); st.adds = st.adds.filter(a => a !== b.dataset.rma); draw(); });
+    box.querySelectorAll('[data-ckh]').forEach(b => b.onclick = () => { keep(); st.hair = st.hair === b.dataset.ckh ? '' : b.dataset.ckh; draw(); });
+    q('ck-addsvc').onchange = e => { keep(); if (e.target.value) st.codes.push(e.target.value); draw(); };
+    q('ck-addadd').onchange = e => { keep(); if (e.target.value) st.adds.push(e.target.value); draw(); };
+    q('ck-paid').oninput = () => { st.touched = true; };
+    if (q('ck-auto')) q('ck-auto').onclick = e => { e.preventDefault(); keep(); st.touched = false; draw(); };
+    q('ck-no').onclick = close;
+    q('ck-save').onclick = async () => {
+      keep();
+      if (isNew && !st.codes.length && !st.adds.length) { alertBox('請至少選一個服務'); return; }
+      if (form.paid === null || isNaN(form.paid) || form.paid < 0) { alertBox('請填實收金額'); return; }
+      const btn = q('ck-save'); btn.disabled = true; btn.textContent = '儲存中…';
+      try {
+        if (isNew) {
+          const o = await api('walkin', { name: form.name, phone: form.phone, time: form.time, codes: st.codes, adds: st.adds, hair: st.hair, paid: form.paid, note: form.note, thanks: form.thanks });
+          TD.list.push(o.row); close(); drawToday();
+          toast('✅ 已登記現場客' + (o.locked ? '，已鎖住線上預約這段時間' : '') + (o.thanks ? '，已傳感謝卡 💜' : form.thanks && form.phone && !o.hasLine ? '（這支電話沒有綁 LINE，沒傳感謝卡）' : ''));
+        } else {
+          const o = await api('checkout', { id: r.id, codes: st.codes, adds: st.adds, paid: form.paid, note: form.note });
+          Object.assign(r, o.row); close(); drawToday(); toast('✅ 已儲存實收 $' + (r.paid || 0).toLocaleString());
+        }
+      } catch (e) { btn.disabled = false; btn.textContent = isNew ? '登記現場客（記為已完成）' : '儲存實收'; alertBox(e.message || e); }
+    };
+    if (q('ck-reset')) q('ck-reset').onclick = async () => {
+      try { const o = await api('checkout', { id: r.id, reset: true }); Object.assign(r, o.row); close(); drawToday(); toast('已清除結帳，回到原預約金額'); } catch (e) { alertBox(e.message || e); }
+    };
+    if (q('ck-del')) q('ck-del').onclick = async () => {
+      if (!confirmInline(q('ck-del'))) return;
+      try { await api('checkout', { id: r.id, remove: true }); TD.list = TD.list.filter(x => x.id !== r.id); close(); drawToday(); toast('已刪除這筆現場客'); } catch (e) { alertBox(e.message || e); }
+    };
+  };
+  draw();
+}
+/* 按兩次才刪除（不用瀏覽器的確認視窗） */
+function confirmInline(b) { if (b.dataset.sure) return true; b.dataset.sure = '1'; b.textContent = '再按一次確定刪除'; return false; }
+function alertBox(msg) { infoBox('⚠️ 無法儲存', esc(msg)); }
+function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 3500); }
 
 (async function init() {
   try {
