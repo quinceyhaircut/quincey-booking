@@ -137,7 +137,7 @@ main{padding-bottom:190px}
 .ck-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .ck-chip{background:var(--p2);border-radius:16px;padding:5px 10px;font-size:14px}
 .ck-chip small{color:var(--p)}.ck-chip b{margin-left:6px;color:var(--muted);cursor:pointer;padding:0 2px}
-.toast{position:fixed;left:50%;top:16px;transform:translateX(-50%);background:#3b3446;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:20;max-width:90vw;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.toast{white-space:pre-line;position:fixed;left:50%;top:16px;transform:translateX(-50%);background:#3b3446;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:20;max-width:90vw;box-shadow:0 4px 14px rgba(0,0,0,.25)}
 </style>
 </head>
 <body>
@@ -891,12 +891,14 @@ function ckDiff(r) {
   if (r.payNote) out.push('備註：' + r.payNote);
   return out.join('<br>');
 }
+/* v5.5 儲存後提示：已同步雲端＋今日實收合計 */
+const tdRev = () => TD.list.filter(r => r.result !== '爽約').reduce((s, r) => s + (r.total || 0), 0);
+const synced = m => toast(m + '\n☁️ 已同步雲端｜今日實收合計 $' + tdRev().toLocaleString());
 function drawToday() {
   const L = TD.list.slice().sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
   const appt = L.filter(r => !r.walkin), done = appt.filter(r => r.result).length, walk = L.length - appt.length;
   const rev = L.filter(r => r.result !== '爽約').reduce((s, r) => s + (r.total || 0), 0);
-  const d = new Date(TD.date + 'T00:00:00+08:00');
-  let h = '<div class="td-head"><b>今天的客人 ' + (d.getUTCMonth() + 1) + '/' + d.getUTCDate() + '（' + WK[new Date(TD.date + 'T12:00:00Z').getUTCDay()] + '）</b>' +
+  let h = '<div class="td-head"><b>今天的客人 ' + Number(TD.date.slice(5, 7)) + '/' + Number(TD.date.slice(8, 10)) + '（' + WK[new Date(TD.date + 'T12:00:00Z').getUTCDay()] + '）</b>' +
     '<div class="big">已處理 ' + done + '／' + appt.length + (walk ? '　<small style="font-size:14px">🚶 現場 ' + walk + ' 位</small>' : '') + '</div>今日實收合計（扣掉爽約）<b>$' + rev.toLocaleString() + '</b>' +
     '<p class="muted" style="margin:6px 0 0;font-size:13px">沒按的，21:00 後自動記為完成，只有爽約要處理。已標記的再點一次可以改回來。</p></div>';
   h += '<button class="btn primary" id="td-walk" style="width:100%;margin-bottom:10px">＋ 現場客</button>';
@@ -925,7 +927,7 @@ function drawToday() {
     const want = old === b.dataset.r ? '' : b.dataset.r;   // 點已標記的＝改回未處理
     if (want === '爽約' && !(await askBox('<b>確定記為爽約？</b><br><small class="muted">' + esc(r.time + ' ' + r.name + '｜' + r.items) + '</small><p class="note">會接到原本的爽約三階段處理</p>', '記為爽約', '返回'))) return;
     r.result = want; drawToday();
-    try { const o = await api('mark', { id: r.id, result: want }); if (o.row) Object.assign(r, o.row); drawToday(); }
+    try { const o = await api('mark', { id: r.id, result: want }); if (o.row) Object.assign(r, o.row); drawToday(); synced('✅ 已記錄'); }
     catch (e) { r.result = old; drawToday(); showErr(e); }
   });
 }
@@ -1009,19 +1011,19 @@ function ckOpen(r) {
         if (isNew) {
           const o = await api('walkin', { name: form.name, phone: form.phone, time: form.time, codes: st.codes, adds: st.adds, hair: st.hair, paid: form.paid, note: form.note, thanks: form.thanks });
           TD.list.push(o.row); close(); drawToday();
-          toast('✅ 已登記現場客' + (o.locked ? '，已鎖住線上預約這段時間' : '') + (o.thanks ? '，已傳感謝卡 💜' : form.thanks && form.phone && !o.hasLine ? '（這支電話沒有綁 LINE，沒傳感謝卡）' : ''));
+          synced('✅ 已登記現場客' + (o.locked ? '，已鎖住線上預約這段時間' : '') + (o.thanks ? '，已傳感謝卡 💜' : form.thanks && form.phone && !o.hasLine ? '（這支電話沒有綁 LINE，沒傳感謝卡）' : ''));
         } else {
           const o = await api('checkout', { id: r.id, codes: st.codes, adds: st.adds, paid: form.paid, note: form.note });
-          Object.assign(r, o.row); close(); drawToday(); toast('✅ 已儲存實收 $' + (r.paid || 0).toLocaleString());
+          Object.assign(r, o.row); close(); drawToday(); synced('✅ 已儲存實收 $' + (r.paid || 0).toLocaleString());
         }
       } catch (e) { btn.disabled = false; btn.textContent = isNew ? '登記現場客（記為已完成）' : '儲存實收'; alertBox(e.message || e); }
     };
     if (q('ck-reset')) q('ck-reset').onclick = async () => {
-      try { const o = await api('checkout', { id: r.id, reset: true }); Object.assign(r, o.row); close(); drawToday(); toast('已清除結帳，回到原預約金額'); } catch (e) { alertBox(e.message || e); }
+      try { const o = await api('checkout', { id: r.id, reset: true }); Object.assign(r, o.row); close(); drawToday(); synced('已清除結帳，回到原預約金額'); } catch (e) { alertBox(e.message || e); }
     };
     if (q('ck-del')) q('ck-del').onclick = async () => {
       if (!confirmInline(q('ck-del'))) return;
-      try { await api('checkout', { id: r.id, remove: true }); TD.list = TD.list.filter(x => x.id !== r.id); close(); drawToday(); toast('已刪除這筆現場客'); } catch (e) { alertBox(e.message || e); }
+      try { await api('checkout', { id: r.id, remove: true }); TD.list = TD.list.filter(x => x.id !== r.id); close(); drawToday(); synced('已刪除這筆現場客'); } catch (e) { alertBox(e.message || e); }
     };
   };
   draw();
