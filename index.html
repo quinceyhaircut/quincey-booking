@@ -294,9 +294,22 @@ function allowedAdds(codes) {
   if (codes.some(isTR)) s.delete('QTR');
   return s;
 }
+/* v5.6 剪髮＋一般洗髮＝洗剪吹（較划算）；洗剪吹再加一般洗髮＝重複，取消一般洗髮。有護髮／活動／染燙／其他洗髮時不合併 */
+function cwMerge(codes) {
+  if (!codes.includes('WASH_N')) return null;
+  const pairs = { CUT: 'WCB', KID_CUT: 'KID_WCB' };
+  const cut = codes.find(c => pairs[c] || W.includes(c) || c === 'KID_WCB');
+  if (!cut) return null;
+  const others = codes.filter(c => c !== cut && c !== 'WASH_N');
+  if (others.some(c => evt(c) || isTR(c) || isHairTR(c) || isChem(c) || /^(WASH_|CUT|KID_|WCB|HOME)/.test(c))) return null;
+  const to = pairs[cut] || cut;
+  if (!svc(to)) return null;
+  return { codes: codes.filter(c => c !== 'WASH_N').map(c => c === cut ? to : c), note: pairs[cut] ? '剪髮＋一般洗髮已改為「洗剪吹」（含洗髮、吹整，價格較划算）' : '洗剪吹已含洗髮，已取消一般洗髮' };
+}
 /* 組合規則（與後端相同） */
 function normalize() {
   let c = [...new Set(state.codes)].filter(x => svc(x)); const notes = [];
+  const cw = cwMerge(c); if (cw) { c = cw.codes; notes.push(cw.note); }
   if (c.some(isPerm) && c.some(isCutCat)) { c = c.filter(x => !isCutCat(x)); notes.push('燙髮已含剪髮，已取消剪髮類項目'); }
   const hw = c.some(x => W.includes(x)), hr = c.includes('CUT_RINSE');
   if ((hw || hr) && c.some(x => isTR(x) || isDye(x) || x.startsWith('WASH_'))) {
@@ -983,6 +996,7 @@ function ckOpen(r) {
       svcs.filter(x => x.cat === cat && !st.codes.includes(x.code)).map(x => '<option value="' + esc(x.code) + '">' + esc(label(x)) + '　' + esc(fmt(priceOf(x.code, TD.date, st.hair)).replace(' 起', '起')) + '</option>').join('') + '</optgroup>').join('') + '</select>';
     h += '<select id="ck-addadd" style="margin-top:6px"><option value="">＋ 加購</option>' + adds.filter(a => !st.adds.includes(a.code)).map(a => '<option value="' + esc(a.code) + '">' + esc(a.name) + '　$' + addPrice(a.code, TD.date).toLocaleString() + '</option>').join('') + '</select>';
     if (needH()) h += '<label>髮長</label><div class="seg">' + ['短', '中', '長'].map(x => '<button class="btn' + (st.hair === x ? ' on' : '') + '" data-ckh="' + x + '">' + x + '</button>').join('') + '</div>' + (st.hair ? '' : '<p class="note">沒選髮長先用最低價計算</p>');
+    if (st.cwNote) h += '<p class="muted" style="margin:8px 0 0">ⓘ ' + esc(st.cwNote) + '</p>';
     h += '<p style="margin:12px 0 0">系統計算 <b class="price">$' + s.t.toLocaleString() + (s.from ? ' 起' : '') + '</b>' + (st.n > 1 ? '<small class="muted">（' + st.n + ' 人）</small>' : '') + '</p>';
     h += '<label>實收金額 <small class="muted">（折扣、抹零可以直接改）</small></label><input type="tel" inputmode="numeric" id="ck-paid" value="' + (form.paid === null ? '' : form.paid) + '">' +
       (st.touched && form.paid !== s.t ? '<p class="muted" style="font-size:12px;margin:4px 0 0">已手動改金額（系統計算 $' + s.t.toLocaleString() + '）<a href="#" id="ck-auto">改回系統計算</a></p>' : '');
@@ -994,10 +1008,10 @@ function ckOpen(r) {
     h += '<button class="btn" id="ck-no" style="border-color:var(--line);color:var(--muted)">取消</button>';
     box.innerHTML = h;
     const q = id => box.querySelector('#' + id);
-    box.querySelectorAll('[data-rmc]').forEach(b => b.onclick = () => { keep(); st.codes = st.codes.filter(c => c !== b.dataset.rmc); draw(); });
+    box.querySelectorAll('[data-rmc]').forEach(b => b.onclick = () => { keep(); st.cwNote = ''; st.codes = st.codes.filter(c => c !== b.dataset.rmc); draw(); });
     box.querySelectorAll('[data-rma]').forEach(b => b.onclick = () => { keep(); st.adds = st.adds.filter(a => a !== b.dataset.rma); draw(); });
     box.querySelectorAll('[data-ckh]').forEach(b => b.onclick = () => { keep(); st.hair = st.hair === b.dataset.ckh ? '' : b.dataset.ckh; draw(); });
-    q('ck-addsvc').onchange = e => { keep(); if (e.target.value) st.codes.push(e.target.value); draw(); };
+    q('ck-addsvc').onchange = e => { keep(); if (e.target.value) { st.codes.push(e.target.value); const cw = cwMerge(st.codes); st.cwNote = cw ? cw.note : ''; if (cw) st.codes = cw.codes; } draw(); };
     q('ck-addadd').onchange = e => { keep(); if (e.target.value) st.adds.push(e.target.value); draw(); };
     q('ck-paid').oninput = () => { st.touched = true; };
     if (q('ck-auto')) q('ck-auto').onclick = e => { e.preventDefault(); keep(); st.touched = false; draw(); };
